@@ -307,10 +307,10 @@ def _run_job_preset(
         if recipients:
             is_error = result.verification != VerificationStatus.OK or result.overflow_docs > 0
             if is_error:
-                subject = f"[BrazeBars] [ACTION REQUIRED] {job.name} — {job.session_id} — Errors Detected"
+                subject = f"[Braze Codes] [ACTION REQUIRED] {job.name} — {job.session_id} — Errors Detected"
                 status_text = "ERRORS DETECTED"
             else:
-                subject = f"[BrazeBars] {job.name} — {job.session_id} — Complete"
+                subject = f"[Braze Codes] {job.name} — {job.session_id} — Complete"
                 status_text = "COMPLETE"
 
             body = (

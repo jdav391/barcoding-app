@@ -215,8 +215,8 @@ class TestCoverEndSheets:
         # First and last pages should contain report text
         first_text = combined_reader.pages[0].extract_text()
         last_text = combined_reader.pages[-1].extract_text()
-        assert "BrazeBars Job Report" in first_text
-        assert "BrazeBars Job Report" in last_text
+        assert "Braze Codes Job Report" in first_text
+        assert "Braze Codes Job Report" in last_text
 
 
 class TestAutoEmail:
@@ -263,7 +263,7 @@ class TestAutoEmail:
         call_kwargs = mock_send.call_args
         assert "shared@example.com" in call_kwargs.kwargs["recipients"]
         assert "qa@example.com" in call_kwargs.kwargs["recipients"]
-        assert call_kwargs.kwargs["subject"].startswith("[BrazeBars]")
+        assert call_kwargs.kwargs["subject"].startswith("[Braze Codes]")
 
     @patch("app.services.job.send_report_email")
     def test_no_email_when_disabled(self, mock_send, db_session, sample_duplex_pdf):
@@ -621,4 +621,4 @@ class TestSessionCompile:
         assert len(compiled_pdf.pages) == 12
 
         first_text = compiled_pdf.pages[0].extract_text()
-        assert "BrazeBars Session Report" in first_text
+        assert "Braze Codes Session Report" in first_text

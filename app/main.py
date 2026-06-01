@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="BrazeBars", lifespan=lifespan)
+app = FastAPI(title="Braze Codes", lifespan=lifespan)
 
 static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(parents=True, exist_ok=True)

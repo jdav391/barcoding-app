@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ "Edit" if preset else "New" }} Preset — BrazeBars{% endblock %}
+{% block title %}{{ "Edit" if preset else "New" }} Preset — Braze Codes{% endblock %}
 {% block content %}
 <h1>{{ "Edit" if preset else "New" }} Preset</h1>
 <form method="post" action="/presets{{ '/' ~ preset.id if preset else '' }}">

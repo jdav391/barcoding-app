@@ -6,7 +6,7 @@ APP_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
-    app_name: str = "BrazeBars"
+    app_name: str = "Braze Codes"
     database_url: str = "sqlite:///./barcoding.db"
     host: str = "127.0.0.1"
     port: int = 8000

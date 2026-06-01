@@ -40,7 +40,7 @@ def generate_session_report_pdf(report_data: dict) -> bytes:
 
     elements = []
 
-    elements.append(Paragraph("BrazeBars Session Report", title_style))
+    elements.append(Paragraph("Braze Codes Session Report", title_style))
     elements.append(Paragraph(
         f"{report_data['session_name']} &mdash; {report_data['session_id']} &mdash; {report_data['date']}",
         subtitle_style,
@@ -104,7 +104,7 @@ def generate_session_report_pdf(report_data: dict) -> bytes:
 
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     elements.append(Paragraph(
-        f"Generated: {timestamp}<br/>This report was generated automatically by BrazeBars.",
+        f"Generated: {timestamp}<br/>This report was generated automatically by Braze Codes.",
         footer_style,
     ))
 

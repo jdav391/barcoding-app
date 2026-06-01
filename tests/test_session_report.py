@@ -46,7 +46,7 @@ class TestSessionReportPdf:
         assert len(reader.pages) == 1
 
         text = reader.pages[0].extract_text()
-        assert "BrazeBars Session Report" in text
+        assert "Braze Codes Session Report" in text
         assert "DLD Tuesday" in text
         assert "2026-05-24-001" in text
 
