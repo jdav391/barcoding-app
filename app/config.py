@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+APP_DIR = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
@@ -15,7 +19,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
-    uploads_dir: str = "static/uploads"
+    uploads_dir: str = str(APP_DIR / "static" / "uploads")
 
     model_config = {"env_prefix": "BARCODE_"}
 

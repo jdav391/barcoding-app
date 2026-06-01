@@ -1,4 +1,6 @@
 import datetime as dt
+import json
+
 from pydantic import BaseModel, Field
 from app.enums import (
     FeedDirection, IdSource, ImportMethod, JobMode, JobStatus, MatchType, OutputMode,
@@ -179,6 +181,52 @@ class FileEntry(BaseModel):
     is_dir: bool
     size: int | None = None
     page_count: int | None = None
+
+
+class SourceFile(BaseModel):
+    path: str
+    name: str
+    page_count: int | None = None
+
+
+class WizardState(BaseModel):
+    current_step: int = Field(ge=1, le=5)
+    name: str = ""
+    session_id: str = ""
+    date: str = ""
+    output_mode: str = "COMBINED"
+    batch_data: str = "[]"
+    source_path: str = ""
+    source_paths: str = "[]"
+    mode: str = "PRESET"
+    preset_id: int = 0
+    template_id: int = 0
+    preset_assignments: str = ""
+
+    def parse_batch_data(self) -> list[dict]:
+        try:
+            return json.loads(self.batch_data)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def parse_source_paths(self) -> list[SourceFile]:
+        if self.source_paths and self.source_paths != "[]":
+            try:
+                return [SourceFile(**p) for p in json.loads(self.source_paths)]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+        if self.source_path:
+            name = self.source_path.rsplit("/", 1)[-1] if "/" in self.source_path else self.source_path
+            return [SourceFile(path=self.source_path, name=name)]
+        return []
+
+    def parse_preset_assignments(self) -> dict[str, int]:
+        if self.preset_assignments:
+            try:
+                return json.loads(self.preset_assignments)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return {}
 
 
 class SessionCreate(BaseModel):

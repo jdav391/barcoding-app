@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.enums import PageFormat
 from app.models import Template, Region
@@ -159,7 +160,7 @@ async def upload_sample(template_id: int, file: UploadFile = File(...), db: Sess
     template = get_template(db, template_id)
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    upload_dir = Path("static/uploads/templates") / str(template_id)
+    upload_dir = Path(settings.uploads_dir) / "templates" / str(template_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
     file_path = upload_dir / "sample.pdf"
     with open(file_path, "wb") as f:
