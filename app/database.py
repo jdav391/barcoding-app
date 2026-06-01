@@ -36,6 +36,12 @@ def create_tables():
             conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN session_fk INTEGER REFERENCES sessions(id)")
         if "error_message" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN error_message TEXT")
+        result_presets = conn.exec_driver_sql("PRAGMA table_info('presets')")
+        preset_cols = [row[1] for row in result_presets]
+        if "auto_email_enabled" not in preset_cols:
+            conn.exec_driver_sql("ALTER TABLE presets ADD COLUMN auto_email_enabled BOOLEAN NOT NULL DEFAULT 0")
+        if "email_recipients" not in preset_cols:
+            conn.exec_driver_sql("ALTER TABLE presets ADD COLUMN email_recipients TEXT")
         result2 = conn.exec_driver_sql("PRAGMA table_info('sessions')")
         session_cols = [row[1] for row in result2]
         if "status" not in session_cols:
