@@ -1,0 +1,10 @@
+{% if parent_path %}
+<div class="entry" onclick="browseTo('{{ parent_path }}')">..</div>
+{% endif %}
+{% for entry in entries %}
+{% if entry.is_dir %}
+<div class="entry" onclick="browseTo('{{ entry.path }}')">📁 {{ entry.name }}</div>
+{% else %}
+<div class="entry" onclick="selectPdf('{{ entry.path }}', {{ entry.page_count or 0 }})">📄 {{ entry.name }}{% if entry.page_count %} ({{ entry.page_count }} pages){% endif %}</div>
+{% endif %}
+{% endfor %}

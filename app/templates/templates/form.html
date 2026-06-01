@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if template else "New" }} Template — BrazeBars{% endblock %}
+{% block content %}
+<h1>{% if template %}Edit{% else %}New{% endif %} Template</h1>
+
+<form method="post" action="/templates" enctype="multipart/form-data">
+  <fieldset>
+    <legend>Template Details</legend>
+    <label>Name <input type="text" name="name" value="{{ template.name if template else '' }}" required></label>
+    <label>Description <input type="text" name="description" value="{{ template.description or '' if template else '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Document Settings</legend>
+    <label>Page Format
+      <select name="page_format">
+        <option value="DUPLEX" {% if template and template.page_format.value == 'DUPLEX' %}selected{% endif %}>Duplex</option>
+        <option value="SIMPLEX" {% if template and template.page_format.value == 'SIMPLEX' %}selected{% endif %}>Simplex</option>
+      </select>
+    </label>
+    <label>Feed Direction
+      <select name="feed_direction">
+        <option value="ASCENDING" {% if template and template.feed_direction.value == 'ASCENDING' %}selected{% endif %}>Ascending</option>
+        <option value="DESCENDING" {% if template and template.feed_direction.value == 'DESCENDING' %}selected{% endif %}>Descending</option>
+      </select>
+    </label>
+    <label><input type="checkbox" name="has_insert" {% if template and template.has_insert %}checked{% endif %}> Has Insert Pocket</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Barcode Placement</legend>
+    <label>Anchor
+      <select name="bc_anchor">
+        <option value="bottom-right">Bottom Right</option>
+        <option value="bottom-left">Bottom Left</option>
+        <option value="top-right">Top Right</option>
+        <option value="top-left">Top Left</option>
+      </select>
+    </label>
+    <label>X Offset (pt) <input type="number" name="bc_x_offset" value="36"></label>
+    <label>Y Offset (pt) <input type="number" name="bc_y_offset" value="36"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sample PDF</legend>
+    <label>Upload a sample PDF for region selection
+      <input type="file" name="sample_pdf" accept=".pdf" {% if not template %}required{% endif %}>
+    </label>
+  </fieldset>
+
+  <button type="submit" class="btn-primary">{% if template %}Update{% else %}Create{% endif %} Template</button>
+  <a href="/templates" class="btn-secondary">Cancel</a>
+</form>
+{% endblock %}

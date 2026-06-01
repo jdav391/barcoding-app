@@ -1,0 +1,67 @@
+<div data-wizard-step="5">
+    <h2>Review &amp; Run</h2>
+
+    <table>
+        <tbody>
+            <tr><td><strong>Session Name</strong></td><td>{{ name }}</td></tr>
+            <tr><td><strong>Session ID</strong></td><td>{{ session_id }}</td></tr>
+            <tr><td><strong>Date</strong></td><td>{{ date }}</td></tr>
+            <tr><td><strong>Output Mode</strong></td><td>{{ output_mode }}</td></tr>
+            <tr><td><strong>Mode</strong></td><td>{{ "Preset" if mode == "PRESET" else "Template" }}</td></tr>
+        </tbody>
+    </table>
+
+    {% if jobs_preview | length > 1 %}
+    <h3>Jobs to Process ({{ jobs_preview | length }})</h3>
+    <table>
+        <thead>
+            <tr><th>Source File</th><th>Pages</th><th>Preset / Template</th></tr>
+        </thead>
+        <tbody>
+            {% for jp in jobs_preview %}
+            <tr>
+                <td>{{ jp.source_name }}</td>
+                <td>{{ jp.page_count or '—' }}</td>
+                <td>{{ jp.preset.name if jp.preset else (jp.template.name if jp.template else '—') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    {% set jp = jobs_preview[0] if jobs_preview else {} %}
+    <table>
+        <tbody>
+            <tr><td><strong>Source PDF</strong></td><td>{{ jp.source_name if jp else '—' }}</td></tr>
+            {% if mode == "PRESET" %}
+            <tr><td><strong>Preset</strong></td><td>{{ jp.preset.name if jp and jp.preset else 'Unknown' }}</td></tr>
+            {% else %}
+            <tr><td><strong>Template</strong></td><td>{{ jp.template.name if jp and jp.template else 'Unknown' }}</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <form id="wizard-nav" hx-post="/jobs/wizard/run" hx-target="#wizard-content" hx-swap="innerHTML">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="batch_data" value="{{ batch_data }}">
+        <input type="hidden" name="source_path" value="{{ source_path }}">
+        <input type="hidden" name="source_paths" value="{{ source_paths }}">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        <input type="hidden" name="output_mode" value="{{ output_mode }}">
+        <input type="hidden" name="preset_id" value="{{ preset_id }}">
+        <input type="hidden" name="template_id" value="{{ template_id }}">
+        <input type="hidden" name="preset_assignments" value="{{ preset_assignments }}">
+        <div class="wizard-nav-buttons">
+            <button type="button" class="secondary"
+                    hx-post="/wizard/{{ session_id }}/goto/4"
+                    hx-target="#wizard-content" hx-swap="innerHTML"
+                    hx-include="#wizard-nav">Back</button>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" class="outline" onclick="saveAndExit()">Save & Exit</button>
+                <button type="submit">Start Processing</button>
+            </div>
+        </div>
+    </form>
+</div>

@@ -1,0 +1,148 @@
+<div data-wizard-step="4">
+    <h2>Select Preset or Template</h2>
+
+    {% if presets or templates %}
+    <form id="wizard-nav" hx-post="/jobs/wizard/step5" hx-target="#wizard-content" hx-swap="innerHTML">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="batch_data" value="{{ batch_data }}">
+        <input type="hidden" name="source_path" value="{{ source_path }}">
+        <input type="hidden" name="source_paths" value="{{ source_paths }}">
+        <input type="hidden" name="output_mode" value="{{ output_mode }}">
+        <input type="hidden" id="preset-assignments-json" name="preset_assignments" value="{{ preset_assignments or '' }}">
+
+        <div class="mode-toggle">
+            <label><input type="radio" name="mode" value="PRESET"{% if presets and mode != 'TEMPLATE' %} checked{% endif %} onchange="toggleMode()"> <strong>Preset</strong></label>
+            <label><input type="radio" name="mode" value="TEMPLATE"{% if mode == 'TEMPLATE' or (not presets and templates) %} checked{% endif %} onchange="toggleMode()"> <strong>Template</strong></label>
+        </div>
+
+        <div id="preset-section"{% if not presets %} style="display:none"{% endif %}>
+            {% if presets %}
+            {% if is_multi %}
+            <h3>Assign Presets to Files</h3>
+            <div style="margin-bottom: 1rem;">
+                <label>Apply to all:
+                    <select id="apply-all-preset" onchange="applyPresetToAll(this.value)">
+                        <option value="">— Select —</option>
+                        {% for preset in presets %}
+                        <option value="{{ preset.id }}">{{ preset.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <table>
+                <thead>
+                    <tr><th>File</th><th>Pages</th><th>Preset</th></tr>
+                </thead>
+                <tbody>
+                    {% for f in pdf_files %}
+                    <tr>
+                        <td>{{ f.name }}</td>
+                        <td>{{ f.page_count or '—' }}</td>
+                        <td>
+                            <select class="file-preset" data-path="{{ f.path }}" onchange="updatePresetAssignments()">
+                                <option value="">— Select —</option>
+                                {% for preset in presets %}
+                                <option value="{{ preset.id }}" {{ 'selected' if preset_assignments_dict.get(f.path) == preset.id }}>{{ preset.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <h3>Presets</h3>
+            {% for preset in presets %}
+            <label>
+                <input type="radio" name="preset_id" value="{{ preset.id }}"{{ ' checked' if preset.id == preset_id else (' checked' if loop.first and not preset_id) }}>
+                <strong>{{ preset.name }}</strong> &mdash; {{ preset.sheets_per_doc }} sheet(s), {{ preset.page_format.value }}, {{ preset.feed_direction.value }}
+                {%- if preset.has_insert %} | Insert{% endif %}
+                {%- if preset.has_divert %} | Divert{% endif %}
+            </label>
+            {% endfor %}
+            {% endif %}
+            {% endif %}
+        </div>
+
+        <div id="template-section"{% if presets or not templates %} style="display:none"{% endif %}>
+            {% if templates %}
+            <h3>Templates</h3>
+            {% for template in templates %}
+            <label>
+                <input type="radio" name="template_id" value="{{ template.id }}"{{ ' checked' if template.id == template_id else (' checked' if loop.first and not template_id) }}>
+                <strong>{{ template.name }}</strong> &mdash; {{ template.page_format.value }}, {{ template.feed_direction.value }}
+                {%- if template.has_insert %} | Insert{% endif %}
+            </label>
+            {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="wizard-nav-buttons">
+            <button type="button" class="secondary"
+                    hx-post="/wizard/{{ session_id }}/goto/3"
+                    hx-target="#wizard-content" hx-swap="innerHTML"
+                    hx-include="#wizard-nav">Back</button>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" class="outline" onclick="saveAndExit()">Save & Exit</button>
+                <button type="submit">Next</button>
+            </div>
+        </div>
+    </form>
+
+    <style>
+    .mode-toggle {
+        margin-bottom: 1em;
+        padding: 0.5em;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    .mode-toggle label {
+        margin-right: 1em;
+        cursor: pointer;
+    }
+    #preset-section label,
+    #template-section label {
+        display: block;
+        margin: 0.5em 0;
+        padding: 0.5em;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    #preset-section label:hover,
+    #template-section label:hover {
+        background: #f0f0f0;
+    }
+    .file-preset { margin: 0; }
+    </style>
+
+    <script>
+    function toggleMode() {
+        var mode = document.querySelector('input[name="mode"]:checked').value;
+        document.getElementById('preset-section').style.display = mode === 'PRESET' ? 'block' : 'none';
+        document.getElementById('template-section').style.display = mode === 'TEMPLATE' ? 'block' : 'none';
+    }
+
+    function applyPresetToAll(presetId) {
+        document.querySelectorAll('.file-preset').forEach(function(sel) {
+            sel.value = presetId;
+        });
+        updatePresetAssignments();
+    }
+
+    function updatePresetAssignments() {
+        var assignments = {};
+        document.querySelectorAll('.file-preset').forEach(function(sel) {
+            if (sel.value) {
+                assignments[sel.dataset.path] = parseInt(sel.value);
+            }
+        });
+        document.getElementById('preset-assignments-json').value = JSON.stringify(assignments);
+    }
+    </script>
+    {% else %}
+    <p>No presets or templates found. <a href="/presets/new" target="_blank">Create a preset</a> or <a href="/templates" target="_blank">create a template</a>, then refresh this page.</p>
+    {% endif %}
+</div>

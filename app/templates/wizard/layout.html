@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}New Session — BrazeBars{% endblock %}
+{% block content %}
+<h1>New Session</h1>
+<div class="wizard-steps">
+    <span class="step active" data-step="1">1. Session</span>
+    <span class="step" data-step="2">2. Batch Data</span>
+    <span class="step" data-step="3">3. Source PDFs</span>
+    <span class="step" data-step="4">4. Preset</span>
+    <span class="step" data-step="5">5. Review</span>
+</div>
+<div id="wizard-content">
+    {% block wizard_step %}{% endblock %}
+</div>
+{% endblock %}

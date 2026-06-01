@@ -1,0 +1,32 @@
+<div data-wizard-step="1">
+    <h2>Session Info</h2>
+    <form id="wizard-nav">
+        <label for="name">Session Name
+            <input type="text" id="name" name="name" value="{{ name or '' }}" placeholder="DLD Tuesday" required>
+        </label>
+        <label for="session_id">Session ID
+            <input type="text" id="session_id" name="session_id" value="{{ session_id }}" placeholder="2026-05-24-001" required>
+        </label>
+        <label for="date">Date
+            <input type="date" id="date" name="date" value="{{ date }}">
+        </label>
+        <fieldset>
+            <legend>Output Mode</legend>
+            <label>
+                <input type="radio" name="output_mode" value="COMBINED" {{ 'checked' if output_mode != 'SEPARATE' }}>
+                Combined — merge all job outputs into one PDF
+            </label>
+            <label>
+                <input type="radio" name="output_mode" value="SEPARATE" {{ 'checked' if output_mode == 'SEPARATE' }}>
+                Separate — keep each job output as its own PDF
+            </label>
+        </fieldset>
+        <div class="wizard-nav-buttons">
+            <div></div>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" class="outline" onclick="saveAndExit()">Save & Exit</button>
+                <button type="submit" hx-post="/jobs/wizard/step2" hx-target="#wizard-content" hx-swap="innerHTML">Next</button>
+            </div>
+        </div>
+    </form>
+</div>

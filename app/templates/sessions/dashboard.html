@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ session.name }} — BrazeBars{% endblock %}
+{% block content %}
+<hgroup>
+    <h1>{{ session.name }}</h1>
+    <p>Session {{ session.session_id }} — {{ session.date }}</p>
+</hgroup>
+
+<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+    <span><strong>Output Mode:</strong> {{ session.output_mode.value }}</span>
+</div>
+
+{% if stats.total_documents > 0 %}
+<h2>Session Totals</h2>
+<table>
+    <tbody>
+        <tr><td>Total Documents</td><td>{{ stats.total_documents }}</td></tr>
+        <tr><td>Total Sheets</td><td>{{ stats.total_sheets }}</td></tr>
+        <tr><td>Total Barcodes</td><td>{{ stats.total_barcodes }}</td></tr>
+    </tbody>
+</table>
+{% endif %}
+
+<h2>Jobs</h2>
+{% if session.jobs %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Source File</th>
+            <th>Preset / Template</th>
+            <th>Status</th>
+            <th>Documents</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in session.jobs %}
+        <tr>
+            <td>{{ job.name }}</td>
+            <td>{{ job.source_path | basename }}</td>
+            <td>{{ job.preset.name if job.preset else (job.template.name if job.template else '—') }}</td>
+            <td>
+                {% if job.status.value == "COMPLETE" %}
+                <ins>{{ job.status.value }}</ins>
+                {% elif job.status.value == "ERROR" %}
+                <del>{{ job.status.value }}</del>
+                {% else %}
+                {{ job.status.value }}
+                {% endif %}
+            </td>
+            <td>{{ job.result.total_documents if job.result else '—' }}</td>
+            <td>
+                {% if job.result %}
+                <a href="/jobs/{{ job.id }}/report">Report</a>
+                {% elif job.status.value == "ERROR" and job.error_message %}
+                <details><summary>Error</summary><small>{{ job.error_message }}</small></details>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No jobs in this session yet.</p>
+{% endif %}
+
+<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+    {% if has_completed %}
+    <button type="button" id="btn-compile" onclick="compileSession('{{ session.session_id }}')">
+        Compile All
+    </button>
+    {% endif %}
+    {% if session.compiled_output_path %}
+    <a href="/api/sessions/{{ session.session_id }}/download" role="button" class="secondary">
+        Download Compiled PDF
+    </a>
+    {% endif %}
+    <a href="/" role="button" class="outline">Back to Sessions</a>
+</div>
+
+<p id="compile-status"></p>
+
+<script>
+function compileSession(sessionId) {
+    var btn = document.getElementById("btn-compile");
+    var status = document.getElementById("compile-status");
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    status.textContent = "Compiling...";
+
+    fetch("/api/sessions/" + sessionId + "/compile", { method: "POST" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.compiled_path) {
+                status.textContent = "Compiled successfully! " + data.total_documents + " documents.";
+                status.style.color = "var(--pico-ins-color)";
+                setTimeout(function() { window.location.reload(); }, 1000);
+            } else {
+                status.textContent = "Compile failed: " + (data.detail || "Unknown error");
+                status.style.color = "var(--pico-del-color)";
+            }
+        })
+        .catch(function(err) {
+            status.textContent = "Error: " + err.message;
+            status.style.color = "var(--pico-del-color)";
+        })
+        .finally(function() {
+            btn.disabled = false;
+            btn.removeAttribute("aria-busy");
+        });
+}
+</script>
+{% endblock %}

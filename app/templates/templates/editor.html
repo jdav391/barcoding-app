@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Edit Template — BrazeBars{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/css/template_editor.css">
+{% endblock %}
+{% block content %}
+<h1>{{ template.name }}</h1>
+<p>{{ template.description or '' }}</p>
+<input type="hidden" id="template-id" value="{{ template.id }}">
+
+<div class="editor-layout">
+  <div class="pdf-viewer-panel" id="pdf-viewer">
+    <div class="pdf-toolbar">
+      <button id="btn-prev-page" title="Previous page">&larr;</button>
+      <span>Page <span id="current-page">1</span> of <span id="page-count">?</span></span>
+      <button id="btn-next-page" title="Next page">&rarr;</button>
+    </div>
+    <div class="pdf-viewer-container">
+      <canvas id="pdf-canvas"></canvas>
+      <canvas id="region-overlay"></canvas>
+    </div>
+  </div>
+
+  <div class="region-panel">
+    <h3>Regions</h3>
+    <div class="region-list" id="region-list">
+      <p class="empty">Loading...</p>
+    </div>
+
+    <div class="region-form" id="region-form" style="display:none;">
+      <h4>Edit Region</h4>
+      <label>Name <input type="text" id="rf-name"></label>
+      <label>Role <select id="rf-role">
+        <option value="GROUP_BOUNDARY">Group Boundary</option>
+        <option value="PAGE_COUNTER">Page Counter</option>
+        <option value="UNIQUE_ID">Unique ID</option>
+        <option value="CUSTOM">Custom</option>
+      </select></label>
+      <label>Page <input type="number" id="rf-page" min="1"></label>
+      <div class="form-row">
+        <label>X <input type="number" id="rf-x" step="0.01"></label>
+        <label>Y <input type="number" id="rf-y" step="0.01"></label>
+      </div>
+      <div class="form-row">
+        <label>W <input type="number" id="rf-w" step="0.01"></label>
+        <label>H <input type="number" id="rf-h" step="0.01"></label>
+      </div>
+      <label>Match Type <select id="rf-match-type">
+        <option value="EXACT">Exact</option>
+        <option value="REGEX">Regex</option>
+        <option value="NUMERIC">Numeric</option>
+      </select></label>
+      <label>Pattern <input type="text" id="rf-match-pattern" placeholder="e.g. (\d+) of (\d+)"></label>
+      <label>Priority <input type="number" id="rf-priority" value="0"></label>
+      <div class="btn-group">
+        <button id="btn-apply-form" class="btn-primary">Apply</button>
+        <button id="btn-delete-region" class="btn-danger">Delete</button>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button id="btn-save" class="btn-primary">Save Regions</button>
+      <button id="btn-test" class="btn-secondary">Test Detection</button>
+    </div>
+    <div class="test-results" id="test-results"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="/static/js/template_editor.js"></script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if preset else "New" }} Preset — BrazeBars{% endblock %}
+{% block content %}
+<h1>{{ "Edit" if preset else "New" }} Preset</h1>
+<form method="post" action="/presets{{ '/' ~ preset.id if preset else '' }}">
+    <label for="name">Name
+        <input type="text" id="name" name="name" value="{{ preset.name if preset else '' }}" required>
+    </label>
+    <label for="sheets_per_doc">Sheets per Document
+        <input type="number" id="sheets_per_doc" name="sheets_per_doc" min="1" max="9" value="{{ preset.sheets_per_doc if preset else 1 }}" required>
+    </label>
+    <fieldset>
+        <legend>Page Format</legend>
+        <label><input type="radio" name="page_format" value="DUPLEX" {{ 'checked' if not preset or preset.page_format.value == 'DUPLEX' }}> Duplex</label>
+        <label><input type="radio" name="page_format" value="SIMPLEX" {{ 'checked' if preset and preset.page_format.value == 'SIMPLEX' }}> Simplex</label>
+    </fieldset>
+    <fieldset>
+        <legend>Feed Direction</legend>
+        <label><input type="radio" name="feed_direction" value="ASCENDING" {{ 'checked' if not preset or preset.feed_direction.value == 'ASCENDING' }}> Ascending (first-to-last)</label>
+        <label><input type="radio" name="feed_direction" value="DESCENDING" {{ 'checked' if preset and preset.feed_direction.value == 'DESCENDING' }}> Descending (last-to-first)</label>
+    </fieldset>
+    <input type="hidden" name="has_insert" value="false">
+    <label><input type="checkbox" name="has_insert" value="true" {{ 'checked' if preset and preset.has_insert }}> Additional insert</label>
+    <input type="hidden" name="has_divert" value="false">
+    <label><input type="checkbox" name="has_divert" value="true" {{ 'checked' if preset and preset.has_divert }}> Enable divert character (14-char barcode)</label>
+    <input type="hidden" name="divert_overflow" value="false">
+    <label><input type="checkbox" name="divert_overflow" value="true" {{ 'checked' if preset and preset.divert_overflow }}> Auto-divert overflow documents</label>
+    <details>
+        <summary>Barcode Placement</summary>
+        <label for="bc_anchor">Barcode Anchor
+            <select id="bc_anchor" name="bc_anchor">
+                <option value="bottom-right" {{ 'selected' if not preset or preset.embed_config.get('barcode', {}).get('anchor') == 'bottom-right' }}>Bottom Right</option>
+                <option value="bottom-left" {{ 'selected' if preset and preset.embed_config.get('barcode', {}).get('anchor') == 'bottom-left' }}>Bottom Left</option>
+                <option value="top-right" {{ 'selected' if preset and preset.embed_config.get('barcode', {}).get('anchor') == 'top-right' }}>Top Right</option>
+                <option value="top-left" {{ 'selected' if preset and preset.embed_config.get('barcode', {}).get('anchor') == 'top-left' }}>Top Left</option>
+            </select>
+        </label>
+        <label for="bc_x_offset">X Offset (pt) <input type="number" id="bc_x_offset" name="bc_x_offset" value="{{ preset.embed_config.get('barcode', {}).get('x_offset_pt', 36) if preset else 36 }}"></label>
+        <label for="bc_y_offset">Y Offset (pt) <input type="number" id="bc_y_offset" name="bc_y_offset" value="{{ preset.embed_config.get('barcode', {}).get('y_offset_pt', 36) if preset else 36 }}"></label>
+        <input type="hidden" name="hr_enabled" value="false">
+        <label><input type="checkbox" name="hr_enabled" value="true" {{ 'checked' if not preset or preset.embed_config.get('human_readable', {}).get('enabled', True) }}> Show human-readable text</label>
+    </details>
+    <details>
+        <summary>Email Settings</summary>
+        <input type="hidden" name="auto_email_enabled" value="false">
+        <label><input type="checkbox" name="auto_email_enabled" value="true" {{ 'checked' if preset and preset.auto_email_enabled }}> Automatically email report on completion</label>
+        <label for="email_recipients">Recipients (comma-separated)
+            <input type="text" id="email_recipients" name="email_recipients" value="{{ preset.email_recipients if preset and preset.email_recipients else '' }}" placeholder="shared@example.com, qa@example.com">
+        </label>
+    </details>
+    <button type="submit">{{ "Update" if preset else "Create" }} Preset</button>
+</form>
+{% endblock %}

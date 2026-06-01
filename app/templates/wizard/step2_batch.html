@@ -1,0 +1,73 @@
+<div data-wizard-step="2">
+    <h2>Import Batch Data</h2>
+
+    <details open>
+        <summary>Paste Email Text</summary>
+        <form hx-post="/api/batch-import/parse-email" hx-target="#batch-preview" hx-swap="innerHTML"
+              hx-headers='{"Content-Type": "application/json"}'
+              hx-vals='js:{text: document.getElementById("email-text").value}'
+              hx-ext="json-enc">
+            <textarea id="email-text" name="text" rows="5" placeholder="Paste email lines here..."></textarea>
+            <button type="submit" class="secondary">Parse</button>
+        </form>
+    </details>
+
+    <details>
+        <summary>Upload CSV</summary>
+        <form hx-post="/api/batch-import/parse-csv" hx-target="#batch-preview" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+            <input type="file" name="file" accept=".csv">
+            <button type="submit" class="secondary">Parse CSV</button>
+        </form>
+    </details>
+
+    <details>
+        <summary>Manual Entry</summary>
+        <form id="manual-form">
+            <label>Batch ID <input type="text" name="batch_id" required></label>
+            <label>Expected Letters <input type="number" name="expected_letters" required></label>
+            <label>Expected Sheets <input type="number" name="expected_sheets" required></label>
+            <label>Sheets per Doc <input type="number" name="sheets_per_doc"></label>
+            <label>Print Type <input type="text" name="print_type" placeholder="Double sided color"></label>
+            <label><input type="checkbox" name="has_insert"> Has Insert</label>
+            <button type="button" onclick="addManualEntry()">Add Entry</button>
+        </form>
+    </details>
+
+    <h3>Parsed Data</h3>
+    <div id="batch-preview">
+        <p>No batch data imported yet.</p>
+    </div>
+
+    <form id="wizard-nav" hx-post="/jobs/wizard/step3" hx-target="#wizard-content" hx-swap="innerHTML">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="output_mode" value="{{ output_mode }}">
+        <input type="hidden" id="batch-data-json" name="batch_data" value="{{ batch_data or '[]' }}">
+        <div class="wizard-nav-buttons">
+            <button type="button" class="secondary"
+                    hx-post="/wizard/{{ session_id }}/goto/1"
+                    hx-target="#wizard-content" hx-swap="innerHTML"
+                    hx-include="#wizard-nav">Back</button>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" class="outline" onclick="saveAndExit()">Save & Exit</button>
+                <button type="submit">Next</button>
+            </div>
+        </div>
+    </form>
+</div>
+<script>
+(function() {
+    var batchData = {{ batch_data | safe }};
+    if (batchData && batchData.length > 0) {
+        document.getElementById('batch-data-json').value = JSON.stringify(batchData);
+        var preview = document.getElementById('batch-preview');
+        var html = '<table><thead><tr><th>Batch ID</th><th>Letters</th><th>Sheets</th><th>Sheets/Doc</th><th>Insert</th></tr></thead><tbody>';
+        batchData.forEach(function(e) {
+            html += '<tr><td>' + e.batch_id + '</td><td>' + e.expected_letters + '</td><td>' + e.expected_sheets + '</td><td>' + (e.sheets_per_doc || '—') + '</td><td>' + (e.has_insert ? 'Yes' : 'No') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        preview.innerHTML = html;
+    }
+})();
+</script>

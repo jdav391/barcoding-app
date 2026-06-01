@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Report — {{ job.name }} — BrazeBars{% endblock %}
+{% block content %}
+<hgroup>
+    <h1>Job Report: {{ job.name }}</h1>
+    <p>Session {{ job.session_id }} — {{ job.date }}</p>
+</hgroup>
+
+{% if report.get("verification") %}
+    {% if report["verification"].get("match") %}
+<article style="border-left: 4px solid var(--pico-ins-color);">
+    <header><strong>Verification: PASS</strong></header>
+    <p>All counts match the expected batch data. {{ result.total_documents }} letters and {{ result.total_sheets }} sheets processed as expected.</p>
+</article>
+    {% else %}
+<article style="border-left: 4px solid var(--pico-del-color);">
+    <header><strong>Verification: FAIL</strong></header>
+    <p>{{ report["verification"].get("details", "Count mismatch detected. Review the details below.") }}</p>
+</article>
+    {% endif %}
+{% else %}
+<article style="border-left: 4px solid var(--pico-primary);">
+    <header><strong>Processing Complete</strong></header>
+    <p>{{ result.total_documents }} letters processed across {{ result.total_sheets }} sheets. No batch data was provided for verification.</p>
+</article>
+{% endif %}
+
+<h2>Summary</h2>
+<table>
+    <tbody>
+        <tr><td>Letters Processed</td><td>{{ result.total_documents }}</td></tr>
+        <tr><td>Total Sheets</td><td>{{ result.total_sheets }}</td></tr>
+        <tr><td>Barcodes Applied</td><td>{{ result.total_barcodes }}</td></tr>
+        {% if result.insert_count > 0 %}
+        <tr><td>Inserts</td><td>{{ result.insert_count }}</td></tr>
+        {% endif %}
+        {% if result.diverts_triggered > 0 %}
+        <tr><td>Diverts</td><td>{{ result.diverts_triggered }}</td></tr>
+        {% endif %}
+        {% if result.overflow_docs > 0 %}
+        <tr><td>Overflow (Manual Processing)</td><td>{{ result.overflow_docs }}</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+
+{% if report.get("verification") %}
+<h2>Verification Details</h2>
+<table>
+    <tbody>
+        <tr><td>Expected Letters</td><td>{{ report["verification"]["expected_letters"] }}</td></tr>
+        <tr><td>Letters Processed</td><td>{{ report["verification"]["actual_documents"] }}</td></tr>
+        <tr><td>Expected Sheets</td><td>{{ report["verification"]["expected_sheets"] }}</td></tr>
+        <tr><td>Sheets Processed</td><td>{{ report["verification"]["actual_sheets"] }}</td></tr>
+        <tr><td>Result</td><td>{{ "PASS" if report["verification"]["match"] else "FAIL" }}</td></tr>
+    </tbody>
+</table>
+{% endif %}
+
+{% if report.get("overflow_detail") %}
+<h2>Overflow Documents</h2>
+<p>The following documents exceeded the folding threshold and were diverted for manual processing.</p>
+<table>
+    <thead>
+        <tr><th>Document</th><th>Sheets</th><th>Unique ID</th></tr>
+    </thead>
+    <tbody>
+        {% for od in report["overflow_detail"] %}
+        <tr>
+            <td>{{ od.get("doc_index") + 1 }}</td>
+            <td>{{ od.get("sheets") }}</td>
+            <td>{{ od.get("unique_id") }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<p><strong>Output:</strong> {{ result.output_dir }}</p>
+
+<details id="cert-section">
+    <summary>Send Certification</summary>
+    <label for="cert-recipients">Recipients (comma-separated)
+        <input type="text" id="cert-recipients" value="{{ job.preset.email_recipients or '' }}" placeholder="customer@example.com">
+    </label>
+    <button type="button" id="btn-send-cert" onclick="sendCertification({{ job.id }})">Send Certification Email</button>
+    <p id="cert-status"></p>
+</details>
+
+<div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+    <a href="/api/jobs/{{ job.id }}/report/download" role="button">Download Report PDF</a>
+    {% if job.session_fk %}
+    <a href="/sessions/{{ job.session_id }}" role="button" class="secondary">Back to Session</a>
+    {% else %}
+    <a href="/" role="button" class="secondary">Back to Sessions</a>
+    {% endif %}
+</div>
+{% endblock %}

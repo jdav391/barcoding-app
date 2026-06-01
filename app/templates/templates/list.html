@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Templates — BrazeBars{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>Templates</h1>
+  <p>Auto-detect templates with region-based document detection.</p>
+</hgroup>
+
+<a href="/templates/new" class="btn-primary">New Template</a>
+
+{% if templates %}
+<div class="grid" style="margin-top: 1rem;">
+  {% for t in templates %}
+  <article>
+    <header>
+      <strong>{{ t.name }}</strong>
+      {% if t.description %}<small>{{ t.description }}</small>{% endif %}
+    </header>
+    <p>
+      {{ t.page_format.value }} &middot;
+      {% if t.has_insert %}Insert &middot;{% endif %}
+      {{ t.feed_direction.value }}
+      {% if t.sample_pdf_path %}<br><small>Sample PDF uploaded</small>{% endif %}
+    </p>
+    <footer>
+      <a href="/templates/{{ t.id }}/edit" class="btn-secondary">Edit</a>
+      <button hx-delete="/api/templates/{{ t.id }}"
+              hx-confirm="Delete this template?"
+              hx-target="closest article"
+              hx-swap="outerHTML"
+              class="btn-danger">Delete</button>
+    </footer>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<p>No templates yet. <a href="/templates/new">Create one</a> to get started.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+<table>
+    <thead>
+        <tr><th>Batch ID</th><th>Letters</th><th>Sheets</th><th>Sheets/Doc</th><th>Print Type</th><th>Insert</th></tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.batch_id }}</td>
+            <td>{{ item.expected_letters }}</td>
+            <td>{{ item.expected_sheets }}</td>
+            <td>{{ item.sheets_per_doc or "—" }}</td>
+            <td>{{ item.print_type or "—" }}</td>
+            <td>{{ "Yes" if item.has_insert else "No" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

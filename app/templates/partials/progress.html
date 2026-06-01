@@ -1,0 +1,9 @@
+<div data-wizard-step="5">
+    <h2>Processing...</h2>
+    <p id="progress-job-label">Job 1 of {{ total_jobs }}</p>
+    <div class="progress-bar">
+        <div class="fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+    <p id="progress-message">Starting...</p>
+    <script>processJobQueue({{ job_ids | tojson }}, "{{ session_id }}", "{{ output_mode }}");</script>
+</div>

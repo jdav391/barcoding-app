@@ -1,0 +1,69 @@
+<div data-wizard-step="3">
+    <h2>Select Source PDFs</h2>
+
+    <label for="file-upload">Choose PDF File(s)
+        <input type="file" id="file-upload" accept=".pdf" multiple onchange="uploadSourcePdfs(this)">
+    </label>
+    <p id="upload-status"></p>
+
+    <div id="uploaded-files-list"></div>
+
+    <p id="selected-file-info"></p>
+
+    <details>
+        <summary>Advanced: Enter path manually</summary>
+        <label for="browse-path">Directory Path
+            <input type="text" id="browse-path" value="" placeholder="/path/to/documents">
+            <button type="button" class="secondary" onclick="browseTo(document.getElementById('browse-path').value)">Browse</button>
+        </label>
+        <div id="file-list" class="file-browser"></div>
+    </details>
+
+    <form id="wizard-nav" hx-post="/jobs/wizard/step4" hx-target="#wizard-content" hx-swap="innerHTML">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="session_id" value="{{ session_id }}">
+        <input type="hidden" name="date" value="{{ date }}">
+        <input type="hidden" name="batch_data" value="{{ batch_data }}">
+        <input type="hidden" name="output_mode" value="{{ output_mode }}">
+        <input type="hidden" id="source-path" name="source_path" value="{{ source_path or '' }}">
+        <input type="hidden" id="source-paths" name="source_paths" value="{{ source_paths or '[]' }}">
+        <div class="wizard-nav-buttons">
+            <button type="button" class="secondary"
+                    hx-post="/wizard/{{ session_id }}/goto/2"
+                    hx-target="#wizard-content" hx-swap="innerHTML"
+                    hx-include="#wizard-nav">Back</button>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" class="outline" onclick="saveAndExit()">Save & Exit</button>
+                <button type="submit" id="btn-next-source" {{ 'disabled' if not source_path and (not source_paths or source_paths == '[]') }}>Next</button>
+            </div>
+        </div>
+    </form>
+</div>
+<script>
+(function() {
+    var sp = '{{ source_paths | safe }}';
+    if (sp && sp !== '[]') {
+        try {
+            var paths = JSON.parse(sp);
+            if (paths.length > 0) {
+                document.getElementById('source-path').value = '{{ source_path or '' }}';
+                document.getElementById('source-paths').value = JSON.stringify(paths);
+                document.getElementById('btn-next-source').disabled = false;
+                var info = document.getElementById('selected-file-info');
+                var fileList = document.getElementById('uploaded-files-list');
+                if (paths.length === 1) {
+                    info.textContent = 'Selected: ' + paths[0].name + ' (' + (paths[0].page_count || '?') + ' pages)';
+                } else {
+                    info.textContent = paths.length + ' PDFs selected';
+                    var html = '<table><thead><tr><th>File</th><th>Pages</th></tr></thead><tbody>';
+                    paths.forEach(function(p) {
+                        html += '<tr><td>' + p.name + '</td><td>' + (p.page_count || '?') + '</td></tr>';
+                    });
+                    html += '</tbody></table>';
+                    fileList.innerHTML = html;
+                }
+            }
+        } catch(e) {}
+    }
+})();
+</script>
