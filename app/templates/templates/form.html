@@ -24,7 +24,17 @@
         <option value="DESCENDING" {% if template and template.feed_direction.value == 'DESCENDING' %}selected{% endif %}>Descending</option>
       </select>
     </label>
-    <label><input type="checkbox" name="has_insert" {% if template and template.has_insert %}checked{% endif %}> Has Insert Pocket</label>
+    <label>Inserts (machine pockets to feed)
+      <select name="insert_count">
+        {% for n in [0, 1, 2, 3, 4] %}
+        <option value="{{ n }}" {% if (template.insert_count if template else 0) == n %}selected{% endif %}>{{ n }}{% if n == 0 %} — no insert{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Watched Intake Directory (optional)
+      <input type="text" name="input_dir" value="{{ template.input_dir or '' if template else '' }}" placeholder="/path/to/intake/this-template">
+      <small>PDFs dropped in this directory are automatically processed with this template. Use a dedicated directory per template.</small>
+    </label>
   </fieldset>
 
   <fieldset>

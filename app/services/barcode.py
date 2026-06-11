@@ -10,6 +10,10 @@ from pylibdmtx.pylibdmtx import encode as dmtx_encode
 MAX_SHEET_NUMBER = 9
 MAX_SET_COUNT = 9
 
+# The inserter feeds up to four insert pockets, expressed as a single
+# character: 0 = no insert, 1-4 = number of inserts.
+MAX_INSERT_POCKETS = 4
+
 # All payloads fit an 18x18 ECC200 symbol (36 numeric digit capacity)
 DM_MODULES = 18
 
@@ -31,7 +35,7 @@ def generate_barcode_string(
     unique_id: int,
     sheet_number: int,
     set_count: int,
-    has_insert: bool,
+    insert_count: int,
     is_end_of_group: bool,
     divert: bool | None = None,
 ) -> str:
@@ -45,7 +49,7 @@ def generate_barcode_string(
 
     - EOG       : 1 if is_end_of_group else 0
     - Sheet#    : integer 1-9
-    - Insert    : 1 if has_insert else 0
+    - Insert    : integer 0-4 — number of insert pockets to feed
     - SetCount  : integer 1-9
     - Divert    : 1 if divert else 0 (only present when divert is not None)
     - UniqueID  : 9-digit zero-padded; if unique_id has more than 9 digits,
@@ -54,6 +58,8 @@ def generate_barcode_string(
     Raises BarcodePayloadError if any field is out of range for its
     single-character position.
     """
+    insert_count = int(insert_count)  # tolerate bools from legacy callers
+
     if not 1 <= sheet_number <= MAX_SHEET_NUMBER:
         raise BarcodePayloadError(
             f"sheet_number {sheet_number} out of range 1-{MAX_SHEET_NUMBER}"
@@ -66,12 +72,16 @@ def generate_barcode_string(
         raise BarcodePayloadError(
             f"sheet_number {sheet_number} exceeds set_count {set_count}"
         )
+    if not 0 <= insert_count <= MAX_INSERT_POCKETS:
+        raise BarcodePayloadError(
+            f"insert_count {insert_count} out of range 0-{MAX_INSERT_POCKETS}"
+        )
     if unique_id < 0:
         raise BarcodePayloadError(f"unique_id must be non-negative, got {unique_id}")
 
     eog = "1" if is_end_of_group else "0"
     sheet = str(sheet_number)
-    insert = "1" if has_insert else "0"
+    insert = str(insert_count)
     count = str(set_count)
 
     # Unique ID: take last 9 digits (mod 10^9), zero-padded to 9 places
@@ -181,7 +191,7 @@ def validate_barcode_string(barcode_string: str) -> bool:
     - Must be entirely numeric
     - Position 1 (EOG): must be 0 or 1
     - Position 2 (Sheet#): must be 1-9
-    - Position 3 (Insert): must be 0 or 1
+    - Position 3 (Insert): must be 0-4 (number of insert pockets)
     - Position 4 (SetCount): must be 1-9
     - Position 5 (Divert, only for 14-char): must be 0 or 1
     """
@@ -203,7 +213,7 @@ def validate_barcode_string(barcode_string: str) -> bool:
     if sheet not in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
         return False
 
-    if insert not in ("0", "1"):
+    if insert not in ("0", "1", "2", "3", "4"):
         return False
 
     if set_count not in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):

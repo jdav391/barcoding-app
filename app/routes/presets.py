@@ -15,6 +15,7 @@ def create_preset(data: PresetCreate, db: Session = Depends(get_db)):
         sheets_per_doc=data.sheets_per_doc,
         page_format=data.page_format,
         has_insert=data.has_insert,
+        insert_count=data.insert_count,
         has_divert=data.has_divert,
         divert_overflow=data.divert_overflow,
         feed_direction=data.feed_direction,

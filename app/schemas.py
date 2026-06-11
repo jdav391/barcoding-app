@@ -78,9 +78,18 @@ class TemplateCreate(BaseModel):
     name: str
     description: str | None = None
     page_format: PageFormat = PageFormat.DUPLEX
-    has_insert: bool = False
+    has_insert: bool = False  # legacy alias: True means insert_count=1
+    insert_count: int = Field(0, ge=0, le=4)
     feed_direction: FeedDirection = FeedDirection.ASCENDING
     embed_config: EmbedConfig = EmbedConfig()
+    input_dir: str | None = None
+
+    @model_validator(mode="after")
+    def _sync_insert_fields(self):
+        if self.insert_count == 0 and self.has_insert:
+            self.insert_count = 1
+        self.has_insert = self.insert_count > 0
+        return self
 
 
 class TemplateResponse(BaseModel):
@@ -89,9 +98,11 @@ class TemplateResponse(BaseModel):
     description: str | None = None
     page_format: PageFormat
     has_insert: bool
+    insert_count: int = 0
     feed_direction: FeedDirection
     embed_config: dict
     sample_pdf_path: str | None = None
+    input_dir: str | None = None
     regions: list[RegionResponse] = []
     created_at: dt.datetime
     updated_at: dt.datetime
@@ -102,7 +113,8 @@ class PresetCreate(BaseModel):
     name: str
     sheets_per_doc: int = Field(ge=1, le=9)
     page_format: PageFormat = PageFormat.DUPLEX
-    has_insert: bool = False
+    has_insert: bool = False  # legacy alias: True means insert_count=1
+    insert_count: int = Field(0, ge=0, le=4)
     has_divert: bool = False
     divert_overflow: bool = False
     feed_direction: FeedDirection = FeedDirection.ASCENDING
@@ -111,6 +123,13 @@ class PresetCreate(BaseModel):
     auto_email_enabled: bool = False
     email_recipients: str | None = None
 
+    @model_validator(mode="after")
+    def _sync_insert_fields(self):
+        if self.insert_count == 0 and self.has_insert:
+            self.insert_count = 1
+        self.has_insert = self.insert_count > 0
+        return self
+
 
 class PresetResponse(BaseModel):
     id: int
@@ -118,6 +137,7 @@ class PresetResponse(BaseModel):
     sheets_per_doc: int
     page_format: PageFormat
     has_insert: bool
+    insert_count: int = 0
     has_divert: bool
     divert_overflow: bool
     feed_direction: FeedDirection

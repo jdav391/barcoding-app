@@ -48,4 +48,20 @@ def create_tables():
             conn.exec_driver_sql("ALTER TABLE sessions ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'")
         if "wizard_state" not in session_cols:
             conn.exec_driver_sql("ALTER TABLE sessions ADD COLUMN wizard_state TEXT")
+        # Phase 2.1: multi-pocket insert counts (0-4) replacing boolean has_insert
+        if "insert_count" not in preset_cols:
+            conn.exec_driver_sql("ALTER TABLE presets ADD COLUMN insert_count INTEGER NOT NULL DEFAULT 0")
+            conn.exec_driver_sql("UPDATE presets SET insert_count = CASE WHEN has_insert THEN 1 ELSE 0 END")
+        result_templates = conn.exec_driver_sql("PRAGMA table_info('templates')")
+        template_cols = [row[1] for row in result_templates]
+        if "insert_count" not in template_cols:
+            conn.exec_driver_sql("ALTER TABLE templates ADD COLUMN insert_count INTEGER NOT NULL DEFAULT 0")
+            conn.exec_driver_sql("UPDATE templates SET insert_count = CASE WHEN has_insert THEN 1 ELSE 0 END")
+        if "input_dir" not in template_cols:
+            conn.exec_driver_sql("ALTER TABLE templates ADD COLUMN input_dir TEXT")
+        result_pieces = conn.exec_driver_sql("PRAGMA table_info('mail_pieces')")
+        piece_cols = [row[1] for row in result_pieces]
+        if piece_cols and "insert_count" not in piece_cols:
+            conn.exec_driver_sql("ALTER TABLE mail_pieces ADD COLUMN insert_count INTEGER NOT NULL DEFAULT 0")
+            conn.exec_driver_sql("UPDATE mail_pieces SET insert_count = CASE WHEN has_insert THEN 1 ELSE 0 END")
         conn.commit()

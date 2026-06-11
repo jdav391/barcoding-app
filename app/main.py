@@ -19,7 +19,15 @@ from app.templating import templates
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
+    watcher = None
+    from app.config import settings as app_settings
+    if app_settings.watch_enabled:
+        from app.services.watcher import Watcher
+        watcher = Watcher()
+        watcher.start()
     yield
+    if watcher:
+        watcher.stop()
 
 
 app = FastAPI(title="Braze Codes", lifespan=lifespan)
@@ -128,7 +136,8 @@ async def create_template_form(
     description: str = Form(""),
     page_format: str = Form("DUPLEX"),
     feed_direction: str = Form("ASCENDING"),
-    has_insert: str = Form("false"),
+    insert_count: int = Form(0),
+    input_dir: str = Form(""),
     bc_anchor: str = Form("bottom-right"),
     bc_x_offset: float = Form(36),
     bc_y_offset: float = Form(36),
@@ -148,12 +157,16 @@ async def create_template_form(
             "rotation": 90, "font_name": "Courier", "font_size": 8,
         },
     }
+    if not 0 <= insert_count <= 4:
+        raise HTTPException(status_code=400, detail="Insert count must be 0-4")
     template = Template(
         name=name,
         description=description or None,
         page_format=PageFormat(page_format),
         feed_direction=FeedDirection(feed_direction),
-        has_insert=_form_bool(has_insert),
+        has_insert=insert_count > 0,
+        insert_count=insert_count,
+        input_dir=input_dir.strip() or None,
         embed_config=embed_config,
     )
     db.add(template)
@@ -187,7 +200,7 @@ def create_preset_form(
     sheets_per_doc: int = Form(...),
     page_format: str = Form("DUPLEX"),
     feed_direction: str = Form("ASCENDING"),
-    has_insert: str = Form("false"),
+    insert_count: int = Form(0),
     has_divert: str = Form("false"),
     divert_overflow: str = Form("false"),
     bc_anchor: str = Form("bottom-right"),
@@ -198,6 +211,8 @@ def create_preset_form(
     email_recipients: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if not 0 <= insert_count <= 4:
+        raise HTTPException(status_code=400, detail="Insert count must be 0-4")
     embed_config = {
         "barcode": {
             "anchor": bc_anchor,
@@ -222,7 +237,8 @@ def create_preset_form(
         sheets_per_doc=sheets_per_doc,
         page_format=PageFormat(page_format),
         feed_direction=FeedDirection(feed_direction),
-        has_insert=_form_bool(has_insert),
+        has_insert=insert_count > 0,
+        insert_count=insert_count,
         has_divert=_form_bool(has_divert),
         divert_overflow=_form_bool(divert_overflow),
         id_source=IdSource.SEQUENTIAL,
@@ -242,7 +258,7 @@ def update_preset_form(
     sheets_per_doc: int = Form(...),
     page_format: str = Form("DUPLEX"),
     feed_direction: str = Form("ASCENDING"),
-    has_insert: str = Form("false"),
+    insert_count: int = Form(0),
     has_divert: str = Form("false"),
     divert_overflow: str = Form("false"),
     bc_anchor: str = Form("bottom-right"),
@@ -253,6 +269,8 @@ def update_preset_form(
     email_recipients: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if not 0 <= insert_count <= 4:
+        raise HTTPException(status_code=400, detail="Insert count must be 0-4")
     preset = db.get(Preset, preset_id)
     if not preset:
         raise HTTPException(status_code=404)
@@ -260,7 +278,8 @@ def update_preset_form(
     preset.sheets_per_doc = sheets_per_doc
     preset.page_format = PageFormat(page_format)
     preset.feed_direction = FeedDirection(feed_direction)
-    preset.has_insert = _form_bool(has_insert)
+    preset.has_insert = insert_count > 0
+    preset.insert_count = insert_count
     preset.has_divert = _form_bool(has_divert)
     preset.divert_overflow = _form_bool(divert_overflow)
     preset.auto_email_enabled = _form_bool(auto_email_enabled)

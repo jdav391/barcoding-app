@@ -21,8 +21,10 @@ def create_template(db: Session, data: dict) -> Template:
         description=data.get("description"),
         page_format=data.get("page_format", "DUPLEX"),
         has_insert=data.get("has_insert", False),
+        insert_count=data.get("insert_count", 0),
         feed_direction=data.get("feed_direction", "ASCENDING"),
         embed_config=data.get("embed_config") or DEFAULT_EMBED_CONFIG,
+        input_dir=data.get("input_dir"),
     )
     db.add(template)
     db.commit()
@@ -34,7 +36,7 @@ def update_template(db: Session, template_id: int, data: dict) -> Template | Non
     template = db.get(Template, template_id)
     if not template:
         return None
-    for key in ("name", "description", "page_format", "has_insert", "feed_direction"):
+    for key in ("name", "description", "page_format", "has_insert", "insert_count", "feed_direction", "input_dir"):
         if key in data:
             setattr(template, key, data[key])
     if "embed_config" in data and data["embed_config"] is not None:

@@ -19,8 +19,13 @@
         <label><input type="radio" name="feed_direction" value="ASCENDING" {{ 'checked' if not preset or preset.feed_direction.value == 'ASCENDING' }}> Ascending (first-to-last)</label>
         <label><input type="radio" name="feed_direction" value="DESCENDING" {{ 'checked' if preset and preset.feed_direction.value == 'DESCENDING' }}> Descending (last-to-first)</label>
     </fieldset>
-    <input type="hidden" name="has_insert" value="false">
-    <label><input type="checkbox" name="has_insert" value="true" {{ 'checked' if preset and preset.has_insert }}> Additional insert</label>
+    <label for="insert_count">Inserts (machine pockets to feed)
+        <select id="insert_count" name="insert_count">
+            {% for n in [0, 1, 2, 3, 4] %}
+            <option value="{{ n }}" {{ 'selected' if (preset.insert_count if preset else 0) == n }}>{{ n }}{{ ' — no insert' if n == 0 }}</option>
+            {% endfor %}
+        </select>
+    </label>
     <input type="hidden" name="has_divert" value="false">
     <label><input type="checkbox" name="has_divert" value="true" {{ 'checked' if preset and preset.has_divert }}> Enable divert character (14-char barcode)</label>
     <input type="hidden" name="divert_overflow" value="false">

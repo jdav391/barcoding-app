@@ -62,7 +62,10 @@ class Preset(Base):
     name = Column(String, nullable=False)
     sheets_per_doc = Column(Integer, nullable=False)
     page_format = Column(SAEnum(PageFormat), nullable=False, default=PageFormat.DUPLEX)
+    # Legacy boolean kept in sync with insert_count (insert_count > 0)
     has_insert = Column(Boolean, nullable=False, default=False)
+    # Number of insert pockets to feed (0-4), encoded as barcode position 3
+    insert_count = Column(Integer, nullable=False, default=0)
     has_divert = Column(Boolean, nullable=False, default=False)
     divert_overflow = Column(Boolean, nullable=False, default=False)
     feed_direction = Column(SAEnum(FeedDirection), nullable=False, default=FeedDirection.ASCENDING)
@@ -81,10 +84,17 @@ class Template(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     page_format = Column(SAEnum(PageFormat), nullable=False, default=PageFormat.DUPLEX)
+    # Legacy boolean kept in sync with insert_count (insert_count > 0)
     has_insert = Column(Boolean, nullable=False, default=False)
+    # Number of insert pockets to feed (0-4), encoded as barcode position 3
+    insert_count = Column(Integer, nullable=False, default=0)
     feed_direction = Column(SAEnum(FeedDirection), nullable=False, default=FeedDirection.ASCENDING)
     embed_config = Column(JSON, nullable=False, default=DEFAULT_EMBED_CONFIG)
     sample_pdf_path = Column(String, nullable=True)
+    # Watched intake directory: new PDFs dropped here are auto-processed
+    # with this template. Each template gets its own directory so batches
+    # can never be picked up by the wrong template.
+    input_dir = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
     regions = relationship("Region", back_populates="template", cascade="all, delete-orphan")
@@ -150,6 +160,7 @@ class MailPiece(Base):
     end_page = Column(Integer, nullable=False)
     is_overflow = Column(Boolean, nullable=False, default=False)
     has_insert = Column(Boolean, nullable=False, default=False)
+    insert_count = Column(Integer, nullable=False, default=0)
     divert = Column(Boolean, nullable=False, default=False)
     barcodes = Column(JSON, nullable=False, default=list)
     output_path = Column(String, nullable=False)

@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     max_sheets_per_doc: int = 9
     # Clear-zone inspection of pages before stamping: "off", "warn", or "abort"
     clear_zone_mode: str = "warn"
+    # Watched intake directories (per-template input_dir auto-processing)
+    watch_enabled: bool = True
+    watch_poll_seconds: float = 5.0
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str = ""

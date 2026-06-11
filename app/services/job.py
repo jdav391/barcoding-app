@@ -33,7 +33,7 @@ QUARANTINE_MARKER = "QUARANTINED_DO_NOT_MAIL.txt"
 class PipelineConfig:
     embed_config: dict
     feed_direction: FeedDirection
-    has_insert: bool
+    insert_count: int = 0  # insert pockets to feed (0-4), barcode position 3
     has_divert: bool = False
     divert_overflow: bool = False
 
@@ -118,7 +118,7 @@ def _write_manifest(output_dir: Path, pieces: list[MailPiece]) -> Path:
                 p.start_page + 1,
                 p.end_page + 1,
                 int(p.is_overflow),
-                int(p.has_insert),
+                p.insert_count,
                 int(p.divert),
                 ";".join(p.barcodes),
                 Path(p.output_path).name,
@@ -232,7 +232,7 @@ def _process_pipeline(
                 unique_id=unique_id,
                 sheet_number=sheet_num,
                 set_count=ds.sheet_count,
-                has_insert=config.has_insert,
+                insert_count=config.insert_count,
                 is_end_of_group=is_eog,
                 divert=divert,
             )
@@ -265,7 +265,8 @@ def _process_pipeline(
             start_page=ds.start_page,
             end_page=ds.end_page,
             is_overflow=is_overflow,
-            has_insert=config.has_insert,
+            has_insert=config.insert_count > 0,
+            insert_count=config.insert_count,
             divert=bool(divert),
             barcodes=barcode_strings,
             output_path=str(out_file),
@@ -285,7 +286,7 @@ def _process_pipeline(
     total_documents = len(pieces)
     total_sheets = sum(p.sheet_count for p in pieces)
     total_barcodes = sum(len(p.barcodes) for p in pieces)
-    insert_count = sum(p.sheet_count for p in pieces if p.has_insert)
+    insert_count = sum(p.sheet_count for p in pieces if p.insert_count)
     diverts_triggered = sum(p.sheet_count for p in pieces if p.divert)
     overflow_pieces = [p for p in pieces if p.is_overflow]
     overflow_detail = [
@@ -424,7 +425,7 @@ def _run_job_template(
     config = PipelineConfig(
         embed_config=template.embed_config,
         feed_direction=template.feed_direction,
-        has_insert=template.has_insert,
+        insert_count=template.insert_count or 0,
     )
 
     result, _ = _process_pipeline(
@@ -496,7 +497,7 @@ def _run_job_preset(
     config = PipelineConfig(
         embed_config=preset.embed_config,
         feed_direction=preset.feed_direction,
-        has_insert=preset.has_insert,
+        insert_count=preset.insert_count or 0,
         has_divert=preset.has_divert,
         divert_overflow=preset.divert_overflow,
     )
