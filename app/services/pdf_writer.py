@@ -1,30 +1,28 @@
-"""PDF writer service — barcode embedding, page extraction, and PDF merging."""
+"""PDF writer service — barcode embedding, page extraction, and PDF merging.
+
+Barcodes are drawn as vector rectangles (white quiet zone + black modules)
+directly into the overlay PDF. Vector output guarantees crisp module edges at
+any RIP resolution and removes the raster/DPI coupling entirely: the printed
+module size is exactly module_size_mm regardless of the print pipeline.
+"""
 from __future__ import annotations
 
 import io
-import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from PIL import Image
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter, Transformation
 from reportlab.pdfgen import canvas as rl_canvas
 
-if TYPE_CHECKING:
-    pass
+from app.services.barcode import DM_MODULES, dmtx_module_matrix
+
+MM_TO_PT = 72.0 / 25.4
 
 
-def _compute_image_size_pt(barcode_image: Image.Image, config: dict) -> tuple[float, float]:
-    """Return (width_pt, height_pt) for the barcode image based on embed config.
-
-    The config carries dpi so we can convert pixel dimensions to physical units.
-    """
-    dpi: float = config.get("dpi", 600)
-    px_w, px_h = barcode_image.size
-    # pixels / dpi → inches → * 72 → points
-    width_pt = (px_w / dpi) * 72.0
-    height_pt = (px_h / dpi) * 72.0
-    return width_pt, height_pt
+def barcode_footprint_pt(barcode_config: dict) -> float:
+    """Edge length in points of the stamped square (symbol + quiet zone)."""
+    module_size_mm: float = barcode_config.get("module_size_mm", 0.50)
+    quiet_zone_mm: float = barcode_config.get("quiet_zone_mm", 6.5)
+    return (DM_MODULES * module_size_mm + 2 * quiet_zone_mm) * MM_TO_PT
 
 
 def _anchor_xy(
@@ -54,10 +52,41 @@ def _anchor_xy(
     return x, y
 
 
+def _draw_barcode_vector(
+    c: rl_canvas.Canvas,
+    barcode_text: str,
+    x: float,
+    y: float,
+    barcode_cfg: dict,
+) -> None:
+    """Draw quiet zone + Data Matrix modules as filled vector rects at (x, y)."""
+    module_pt = barcode_cfg.get("module_size_mm", 0.50) * MM_TO_PT
+    quiet_pt = barcode_cfg.get("quiet_zone_mm", 6.5) * MM_TO_PT
+    footprint = DM_MODULES * module_pt + 2 * quiet_pt
+
+    matrix = dmtx_module_matrix(barcode_text)
+
+    c.saveState()
+    # Quiet zone: opaque white so underlying content cannot reduce contrast
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(x, y, footprint, footprint, fill=1, stroke=0)
+
+    c.setFillColorRGB(0, 0, 0)
+    sym_x = x + quiet_pt
+    sym_y = y + quiet_pt
+    for row, cells in enumerate(matrix):
+        # matrix row 0 is the top of the symbol; PDF y grows upward
+        cell_y = sym_y + (DM_MODULES - 1 - row) * module_pt
+        for col, dark in enumerate(cells):
+            if dark:
+                c.rect(sym_x + col * module_pt, cell_y, module_pt, module_pt,
+                       fill=1, stroke=0)
+    c.restoreState()
+
+
 def _build_overlay(
     page_width_pt: float,
     page_height_pt: float,
-    barcode_image: Image.Image,
     barcode_text: str,
     embed_config: dict,
 ) -> bytes:
@@ -65,32 +94,21 @@ def _build_overlay(
     barcode_cfg: dict = embed_config["barcode"]
     hr_cfg: dict = embed_config.get("human_readable", {})
 
-    img_w_pt, img_h_pt = _compute_image_size_pt(barcode_image, barcode_cfg)
+    footprint = barcode_footprint_pt(barcode_cfg)
 
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=(page_width_pt, page_height_pt))
 
-    # --- barcode image ---
     x_img, y_img = _anchor_xy(
         anchor=barcode_cfg["anchor"],
         x_offset_pt=barcode_cfg.get("x_offset_pt", 0),
         y_offset_pt=barcode_cfg.get("y_offset_pt", 0),
-        img_width_pt=img_w_pt,
-        img_height_pt=img_h_pt,
+        img_width_pt=footprint,
+        img_height_pt=footprint,
         page_width_pt=page_width_pt,
         page_height_pt=page_height_pt,
     )
-
-    # Save barcode image to a temp PNG so reportlab can drawImage from it
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_img:
-        tmp_img_path = tmp_img.name
-        barcode_image.save(tmp_img_path, format="PNG")
-
-    try:
-        c.drawImage(tmp_img_path, x_img, y_img, width=img_w_pt, height=img_h_pt, mask="auto")
-    finally:
-        import os
-        os.unlink(tmp_img_path)
+    _draw_barcode_vector(c, barcode_text, x_img, y_img, barcode_cfg)
 
     # --- human-readable text ---
     if hr_cfg.get("enabled", False):
@@ -122,14 +140,51 @@ def _build_overlay(
     return buf.read()
 
 
+def _stamp_page(writer: PdfWriter, embed_config: dict, barcode_text: str) -> None:
+    """Overlay a barcode onto the last page added to *writer*.
+
+    Handles two real-world print-stream quirks:
+    - /Rotate: rotation is baked into the content first so the barcode lands
+      at the intended physical position on the printed sheet.
+    - MediaBox origin: overlays are built in a (0,0)-origin space and shifted
+      to the page's actual lower-left corner.
+    """
+    page = writer.pages[-1]
+
+    if page.rotation:
+        page.transfer_rotation_to_content()
+
+    box = page.mediabox
+    page_w = float(box.width)
+    page_h = float(box.height)
+    origin_x = float(box.left)
+    origin_y = float(box.bottom)
+
+    overlay_bytes = _build_overlay(page_w, page_h, barcode_text, embed_config)
+    overlay_page = PdfReader(io.BytesIO(overlay_bytes)).pages[0]
+
+    if origin_x or origin_y:
+        page.merge_transformed_page(
+            overlay_page, Transformation().translate(origin_x, origin_y)
+        )
+    else:
+        page.merge_page(overlay_page)
+
+
+def _as_reader(source: Path | str | PdfReader) -> PdfReader:
+    """Accept a path or an already-open PdfReader (one parse per job)."""
+    if isinstance(source, PdfReader):
+        return source
+    return PdfReader(str(source))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def embed_barcode_on_page(
-    pdf_path: Path | str,
+    pdf_path: Path | str | PdfReader,
     page_index: int,
-    barcode_image: Image.Image,
     barcode_text: str,
     embed_config: dict,
     output_path: Path | str,
@@ -137,28 +192,18 @@ def embed_barcode_on_page(
     """Extract one page from *pdf_path* at *page_index*, overlay a barcode, write to *output_path*.
 
     Args:
-        pdf_path: Source PDF.
+        pdf_path: Source PDF path or an open PdfReader.
         page_index: 0-indexed page to extract.
-        barcode_image: PIL Image of the barcode to embed.
-        barcode_text: Human-readable barcode string (used when human_readable.enabled is True).
+        barcode_text: Barcode payload string (also rendered as human-readable
+            text when human_readable.enabled is True).
         embed_config: Positioning/appearance config dict.
         output_path: Destination file path for the single-page output PDF.
     """
-    reader = PdfReader(str(pdf_path))
-    source_page = reader.pages[page_index]
-
-    # Page dimensions in points (pypdf stores as floats)
-    page_w = float(source_page.mediabox.width)
-    page_h = float(source_page.mediabox.height)
-
-    overlay_bytes = _build_overlay(page_w, page_h, barcode_image, barcode_text, embed_config)
-
-    overlay_reader = PdfReader(io.BytesIO(overlay_bytes))
-    overlay_page = overlay_reader.pages[0]
+    reader = _as_reader(pdf_path)
 
     writer = PdfWriter()
-    writer.add_page(source_page)
-    writer.pages[-1].merge_page(overlay_page)
+    writer.add_page(reader.pages[page_index])
+    _stamp_page(writer, embed_config, barcode_text)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -167,41 +212,31 @@ def embed_barcode_on_page(
 
 
 def process_document(
-    input_path: Path | str,
+    input_path: Path | str | PdfReader,
     page_range: tuple[int, int],
-    side_a_barcodes: dict[int, tuple[Image.Image, str]],
+    side_a_barcodes: dict[int, str],
     embed_config: dict,
     output_path: Path | str,
 ) -> None:
     """Extract a range of pages from *input_path*, embed barcodes on specified pages, write to *output_path*.
 
     Args:
-        input_path: Source PDF.
+        input_path: Source PDF path or an open PdfReader (pass a shared reader
+            when processing many doc sets from one file).
         page_range: ``(start, end)`` — both are inclusive, 0-indexed.
-        side_a_barcodes: Mapping of {global_page_index: (barcode_image, barcode_text)}.
+        side_a_barcodes: Mapping of {global_page_index: barcode_string}.
             Only pages whose global index appears in this dict get a barcode overlay.
         embed_config: Positioning/appearance config dict.
         output_path: Destination file path for the multi-page output PDF.
     """
-    reader = PdfReader(str(input_path))
+    reader = _as_reader(input_path)
     start, end = page_range
     writer = PdfWriter()
 
     for global_idx in range(start, end + 1):
-        page = reader.pages[global_idx]
-
-        writer.add_page(page)
-
+        writer.add_page(reader.pages[global_idx])
         if global_idx in side_a_barcodes:
-            barcode_image, barcode_text = side_a_barcodes[global_idx]
-
-            page_w = float(page.mediabox.width)
-            page_h = float(page.mediabox.height)
-
-            overlay_bytes = _build_overlay(page_w, page_h, barcode_image, barcode_text, embed_config)
-            overlay_reader = PdfReader(io.BytesIO(overlay_bytes))
-            overlay_page = overlay_reader.pages[0]
-            writer.pages[-1].merge_page(overlay_page)
+            _stamp_page(writer, embed_config, side_a_barcodes[global_idx])
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,9 +254,7 @@ def merge_pdfs(pdf_paths: list[Path | str], output_path: Path | str) -> None:
     writer = PdfWriter()
 
     for path in pdf_paths:
-        reader = PdfReader(str(path))
-        for page in reader.pages:
-            writer.add_page(page)
+        writer.append(str(path))
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

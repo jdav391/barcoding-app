@@ -10,6 +10,9 @@ from pylibdmtx.pylibdmtx import encode as dmtx_encode
 MAX_SHEET_NUMBER = 9
 MAX_SET_COUNT = 9
 
+# All payloads fit an 18x18 ECC200 symbol (36 numeric digit capacity)
+DM_MODULES = 18
+
 
 class BarcodePayloadError(ValueError):
     """A field value cannot be represented in the positional barcode format."""
@@ -85,16 +88,8 @@ def generate_barcode_string(
     return barcode
 
 
-def generate_barcode_image(
-    barcode_string: str,
-    module_size_mm: float = 0.50,
-    quiet_zone_mm: float = 6.5,
-    dpi: int = 600,
-) -> Image.Image:
-    pixels_per_mm = dpi / 25.4
-    module_px = round(module_size_mm * pixels_per_mm)
-    quiet_zone_px = round(quiet_zone_mm * pixels_per_mm)
-
+def _encode_dmtx(barcode_string: str) -> Image.Image:
+    """Encode the payload as an 18x18 ECC200 symbol; return the raw raster."""
     try:
         encoded = dmtx_encode(barcode_string.encode("ascii"), size="18x18")
     except Exception as e:
@@ -107,9 +102,66 @@ def generate_barcode_image(
             f"Data Matrix encoding returned no symbol for {barcode_string!r} "
             f"— payload may exceed 18x18 capacity"
         )
-    raw = Image.frombytes("RGB", (encoded.width, encoded.height), encoded.pixels)
+    return Image.frombytes("RGB", (encoded.width, encoded.height), encoded.pixels)
 
-    symbol_px = 18 * module_px
+
+def dmtx_module_matrix(barcode_string: str) -> list[list[bool]]:
+    """Return the 18x18 module grid (True = dark), row 0 = top row.
+
+    The symbol is located inside libdmtx's raster by the bounding box of its
+    dark pixels, then each module is sampled at its center. The result is
+    verified against the ECC200 finder pattern (solid left column and bottom
+    row) so a sampling error can never silently produce a wrong symbol.
+    """
+    from PIL import ImageOps
+
+    gray = _encode_dmtx(barcode_string).convert("L")
+    bbox = ImageOps.invert(gray).getbbox()
+    if bbox is None:
+        raise BarcodePayloadError(
+            f"Data Matrix raster for {barcode_string!r} contains no dark pixels"
+        )
+    left, top, right, bottom = bbox
+    module_w = (right - left) / DM_MODULES
+    module_h = (bottom - top) / DM_MODULES
+
+    matrix: list[list[bool]] = []
+    for row in range(DM_MODULES):
+        cy = int(top + (row + 0.5) * module_h)
+        matrix.append([
+            gray.getpixel((int(left + (col + 0.5) * module_w), cy)) < 128
+            for col in range(DM_MODULES)
+        ])
+
+    # ECC200 finder pattern: left column and bottom row are solid dark
+    if not all(matrix[r][0] for r in range(DM_MODULES)) or not all(matrix[-1]):
+        raise BarcodePayloadError(
+            f"Sampled Data Matrix grid for {barcode_string!r} failed the "
+            f"finder-pattern check — refusing to render an unverified symbol"
+        )
+    return matrix
+
+
+def generate_barcode_image(
+    barcode_string: str,
+    module_size_mm: float = 0.50,
+    quiet_zone_mm: float = 6.5,
+    dpi: int = 600,
+) -> Image.Image:
+    pixels_per_mm = dpi / 25.4
+    module_px = round(module_size_mm * pixels_per_mm)
+    quiet_zone_px = round(quiet_zone_mm * pixels_per_mm)
+
+    from PIL import ImageOps
+
+    raw = _encode_dmtx(barcode_string)
+    # Crop libdmtx's internal margin away first — resizing the full raster
+    # (symbol + margin) would shrink the printed module size below spec.
+    bbox = ImageOps.invert(raw.convert("L")).getbbox()
+    if bbox:
+        raw = raw.crop(bbox)
+
+    symbol_px = DM_MODULES * module_px
     scaled = raw.resize((symbol_px, symbol_px), Image.NEAREST)
 
     total_px = symbol_px + 2 * quiet_zone_px

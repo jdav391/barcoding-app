@@ -36,40 +36,51 @@ class PageExtraction:
 class RegionTextExtractor:
     """Extract text from defined regions on a PDF page using pdfplumber."""
 
-    def extract_page_text(
+    def extract_from_page(
         self,
-        pdf_path: str | Path,
-        page_index: int,           # 0-indexed
+        page,                      # an open pdfplumber Page
         regions: list,             # list of Region ORM objects
     ) -> dict[int, str]:
-        """Return {region_id: extracted_text} for all regions on this page.
+        """Return {region_id: extracted_text} for all regions on *page*.
 
         In detection context, all regions apply to the current page being
         processed regardless of their ``page`` attribute. The template's
         ``page`` field is used when referencing the original template PDF,
         not during batch detection.
         """
+        page_h = page.height
+        result = {}
+        for r in regions:
+            try:
+                rx, ry = float(r.x), float(r.y)
+                rw, rh = float(r.width), float(r.height)
+                pdf_bottom = min(ry, ry + rh)
+                pdf_top = max(ry, ry + rh)
+                y0 = page_h - pdf_top
+                y1 = page_h - pdf_bottom
+                cropped = page.crop((
+                    rx, y0,
+                    rx + abs(rw), y1,
+                ))
+                text = cropped.extract_text() if cropped else ""
+                result[r.id] = (text or "").strip()
+            except Exception:
+                result[r.id] = ""
+        return result
+
+    def extract_page_text(
+        self,
+        pdf_path: str | Path,
+        page_index: int,           # 0-indexed
+        regions: list,             # list of Region ORM objects
+    ) -> dict[int, str]:
+        """Convenience wrapper for single-page use (template editor/debug).
+
+        Batch detection uses extract_from_page with one shared open document
+        instead — opening the PDF per page is O(N) full parses.
+        """
         with pdfplumber.open(pdf_path) as pdf:
-            page = pdf.pages[page_index]
-            page_h = page.height
-            result = {}
-            for r in regions:
-                try:
-                    rx, ry = float(r.x), float(r.y)
-                    rw, rh = float(r.width), float(r.height)
-                    pdf_bottom = min(ry, ry + rh)
-                    pdf_top = max(ry, ry + rh)
-                    y0 = page_h - pdf_top
-                    y1 = page_h - pdf_bottom
-                    cropped = page.crop((
-                        rx, y0,
-                        rx + abs(rw), y1,
-                    ))
-                    text = cropped.extract_text() if cropped else ""
-                    result[r.id] = (text or "").strip()
-                except Exception:
-                    result[r.id] = ""
-            return result
+            return self.extract_from_page(pdf.pages[page_index], regions)
 
 
 class TextMatcher:
@@ -158,51 +169,53 @@ def detect_from_regions(
         key=lambda r: r.priority,
     )
 
-    # 2. Determine side-A pages and total
-    with pdfplumber.open(pdf_path) as pdf:
-        total_pages = len(pdf.pages)
-
-    if total_pages == 0:
-        return []
-
-    if page_format == PageFormat.DUPLEX and total_pages % 2 != 0:
-        raise DetectionError(
-            f"DUPLEX detection requires an even page count, but the PDF has "
-            f"{total_pages} pages — the last sheet would be missing its side B"
-        )
-
-    if page_format == PageFormat.DUPLEX:
-        side_a_indices = [i for i in range(total_pages) if i % 2 == 0]
-    else:
-        side_a_indices = list(range(total_pages))
-
-    if not side_a_indices:
-        return []
-
-    # 3. Extract text from all regions on each side-A page
+    # 2+3. Open the PDF once; walk side-A pages and extract region text,
+    # flushing each page's object cache to keep memory flat on large runs.
     extractor = RegionTextExtractor()
     page_extractions: list[PageExtraction] = []
     empty_signature_pages: list[int] = []
 
-    for page_idx in side_a_indices:
-        region_texts = extractor.extract_page_text(pdf_path, page_idx, regions)
+    with pdfplumber.open(pdf_path) as pdf:
+        total_pages = len(pdf.pages)
 
-        # Build signature from GROUP_BOUNDARY regions
-        sig_parts = []
-        for r in gb_regions:
-            text = region_texts.get(r.id, "")
-            matched = TextMatcher.match(r.match_type, r.match_pattern, text)
-            sig_parts.append(matched or "")
-        signature = tuple(sig_parts)
+        if total_pages == 0:
+            return []
 
-        if gb_regions and not any(signature):
-            empty_signature_pages.append(page_idx)
+        if page_format == PageFormat.DUPLEX and total_pages % 2 != 0:
+            raise DetectionError(
+                f"DUPLEX detection requires an even page count, but the PDF has "
+                f"{total_pages} pages — the last sheet would be missing its side B"
+            )
 
-        page_extractions.append(PageExtraction(
-            page_index=page_idx,
-            regions_text=region_texts,
-            signature=signature,
-        ))
+        if page_format == PageFormat.DUPLEX:
+            side_a_indices = [i for i in range(total_pages) if i % 2 == 0]
+        else:
+            side_a_indices = list(range(total_pages))
+
+        for page_idx in side_a_indices:
+            page = pdf.pages[page_idx]
+            region_texts = extractor.extract_from_page(page, regions)
+
+            # Build signature from GROUP_BOUNDARY regions
+            sig_parts = []
+            for r in gb_regions:
+                text = region_texts.get(r.id, "")
+                matched = TextMatcher.match(r.match_type, r.match_pattern, text)
+                sig_parts.append(matched or "")
+            signature = tuple(sig_parts)
+
+            if gb_regions and not any(signature):
+                empty_signature_pages.append(page_idx)
+
+            page_extractions.append(PageExtraction(
+                page_index=page_idx,
+                regions_text=region_texts,
+                signature=signature,
+            ))
+
+            flush = getattr(page, "flush_cache", None)
+            if flush:
+                flush()
 
     if warnings is not None and empty_signature_pages:
         shown = ", ".join(str(p + 1) for p in empty_signature_pages[:20])

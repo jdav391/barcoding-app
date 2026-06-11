@@ -11,23 +11,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from app.services.pdf_writer import _anchor_xy
-
-# Symbol geometry must mirror barcode.generate_barcode_image (18x18 ECC200).
-DM_MODULES = 18
-
-
-def barcode_footprint_pt(barcode_config: dict) -> float:
-    """Return the square footprint (symbol + quiet zone) edge length in points."""
-    dpi: float = barcode_config.get("dpi", 600)
-    module_size_mm: float = barcode_config.get("module_size_mm", 0.50)
-    quiet_zone_mm: float = barcode_config.get("quiet_zone_mm", 6.5)
-
-    pixels_per_mm = dpi / 25.4
-    module_px = round(module_size_mm * pixels_per_mm)
-    quiet_zone_px = round(quiet_zone_mm * pixels_per_mm)
-    total_px = DM_MODULES * module_px + 2 * quiet_zone_px
-    return (total_px / dpi) * 72.0
+from app.services.pdf_writer import _anchor_xy, barcode_footprint_pt
 
 
 def find_clear_zone_violations(

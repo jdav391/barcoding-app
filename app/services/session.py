@@ -27,14 +27,24 @@ def compile_session(
     doc_pdfs: list[tuple[int, str, Path]] = []
 
     for job in completed_jobs:
-        machine_dir = Path(job.result.output_dir) / "machine_ready"
-        if not machine_dir.exists():
-            continue
-        for pdf_path in sorted(machine_dir.glob("*.pdf")):
-            reader = PdfReader(str(pdf_path))
-            page_count = len(reader.pages)
-            source_name = Path(job.source_path).stem
-            doc_pdfs.append((page_count, source_name, pdf_path))
+        source_name = Path(job.source_path).stem
+        pieces = sorted(job.mail_pieces, key=lambda p: p.doc_index)
+        if pieces:
+            # Authoritative piece records — no re-parsing of output PDFs needed
+            for p in pieces:
+                if p.is_overflow:
+                    continue
+                page_count = p.end_page - p.start_page + 1
+                doc_pdfs.append((page_count, source_name, Path(p.output_path)))
+        else:
+            # Legacy jobs processed before per-piece records existed
+            machine_dir = Path(job.result.output_dir) / "machine_ready"
+            if not machine_dir.exists():
+                continue
+            for pdf_path in sorted(machine_dir.glob("*.pdf")):
+                reader = PdfReader(str(pdf_path))
+                page_count = len(reader.pages)
+                doc_pdfs.append((page_count, source_name, pdf_path))
 
     doc_pdfs.sort(key=lambda x: (x[0], x[1]))
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import csv
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -13,7 +15,6 @@ from app.enums import FeedDirection, JobMode, JobStatus, VerificationStatus
 from app.models import Job, JobResult, MailPiece, Preset
 from app.services.barcode import (
     MAX_SET_COUNT,
-    generate_barcode_image,
     generate_barcode_string,
     validate_barcode_string,
 )
@@ -80,6 +81,49 @@ def _check_unique_ids(ids_to_process: list[int], prior_ids: list[int]) -> None:
             f"Duplicate unique ID(s) detected within this job: {shown} — "
             f"the inserter cannot distinguish these mailpieces; aborting"
         )
+
+
+def _check_page_sizes(reader: PdfReader, warnings: list[str]) -> None:
+    """Warn when the batch mixes page sizes — fixed-position regions and the
+    barcode anchor assume a uniform sheet size."""
+    sizes: dict[tuple[int, int], int] = {}
+    for page in reader.pages:
+        box = page.mediabox
+        key = (round(float(box.width)), round(float(box.height)))
+        sizes[key] = sizes.get(key, 0) + 1
+    if len(sizes) > 1:
+        listing = ", ".join(
+            f"{w}x{h} pt ({n} page(s))" for (w, h), n in sorted(sizes.items())
+        )
+        warnings.append(
+            f"Mixed page sizes in source PDF: {listing} — verify barcode "
+            f"placement and template regions on every size"
+        )
+
+
+def _write_manifest(output_dir: Path, pieces: list[MailPiece]) -> Path:
+    """Write the per-piece mail run data file (sidecar manifest)."""
+    manifest_path = output_dir / "mail_run_data.csv"
+    with open(manifest_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "piece", "unique_id", "sheets", "start_page", "end_page",
+            "overflow", "insert", "divert", "barcodes", "output_file",
+        ])
+        for p in pieces:
+            writer.writerow([
+                p.doc_index + 1,
+                f"{p.unique_id:09d}",
+                p.sheet_count,
+                p.start_page + 1,
+                p.end_page + 1,
+                int(p.is_overflow),
+                int(p.has_insert),
+                int(p.divert),
+                ";".join(p.barcodes),
+                Path(p.output_path).name,
+            ])
+    return manifest_path
 
 
 def _check_clear_zones(
@@ -154,9 +198,13 @@ def _process_pipeline(
 
     prior_ids = [p.unique_id for p in db.query(MailPiece).filter_by(job_id=job.id)]
 
+    # One parse of the source PDF, shared by every doc set in this run
+    source_reader = PdfReader(str(source))
+
     # Pre-flight safety checks — fail before anything is stamped
     _check_doc_sets(doc_sets_to_process)
     _check_unique_ids(ids_to_process, prior_ids)
+    _check_page_sizes(source_reader, warnings)
     _check_clear_zones(source, doc_sets_to_process, config.embed_config, warnings)
 
     embed_config = config.embed_config
@@ -169,7 +217,7 @@ def _process_pipeline(
         if config.has_divert:
             divert = is_overflow and config.divert_overflow
 
-        barcodes_for_doc: dict[int, tuple] = {}
+        barcodes_for_doc: dict[int, str] = {}
         barcode_strings: list[str] = []
 
         for sheet_idx in range(ds.sheet_count):
@@ -194,22 +242,14 @@ def _process_pipeline(
                     f"{ds.index + 1}, sheet {sheet_num}: {barcode_str!r}"
                 )
 
-            bc_conf = embed_config.get("barcode", {})
-            barcode_img = generate_barcode_image(
-                barcode_str,
-                module_size_mm=bc_conf.get("module_size_mm", 0.50),
-                quiet_zone_mm=bc_conf.get("quiet_zone_mm", 6.5),
-                dpi=bc_conf.get("dpi", 600),
-            )
-
             page_index = ds.side_a_pages[sheet_idx]
-            barcodes_for_doc[page_index] = (barcode_img, barcode_str)
+            barcodes_for_doc[page_index] = barcode_str
             barcode_strings.append(barcode_str)
 
         out_subdir = overflow_dir if is_overflow else machine_dir
         out_file = out_subdir / f"doc_{ds.index:06d}.pdf"
         process_document(
-            input_path=source,
+            input_path=source_reader,
             page_range=(ds.start_page, ds.end_page),
             side_a_barcodes=barcodes_for_doc,
             embed_config=embed_config,
@@ -281,6 +321,9 @@ def _process_pipeline(
 
     report_json_path = output_dir / "report.json"
     report_json_path.write_text(json.dumps(report, indent=2))
+
+    # Sidecar manifest: one row per mailpiece for machine import/reconciliation
+    _write_manifest(output_dir, pieces)
 
     report_pdf_bytes = generate_report_pdf(report)
     report_pdf_path = output_dir / "report.pdf"
