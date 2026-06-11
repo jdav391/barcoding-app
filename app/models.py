@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     JSON, Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
+    UniqueConstraint,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import relationship
@@ -129,6 +130,31 @@ class Job(Base):
     template = relationship("Template", back_populates="jobs")
     result = relationship("JobResult", back_populates="job", uselist=False)
     batch_imports = relationship("BatchImport", back_populates="job")
+    mail_pieces = relationship("MailPiece", back_populates="job")
+
+
+class MailPiece(Base):
+    """One row per processed document set — the per-piece accountability record.
+
+    Job totals and the machine-ready merge order are rebuilt from these rows,
+    so they stay correct across resumed runs.
+    """
+    __tablename__ = "mail_pieces"
+    __table_args__ = (UniqueConstraint("job_id", "doc_index", name="uq_mailpiece_job_doc"),)
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    doc_index = Column(Integer, nullable=False)
+    unique_id = Column(Integer, nullable=False)
+    sheet_count = Column(Integer, nullable=False)
+    start_page = Column(Integer, nullable=False)
+    end_page = Column(Integer, nullable=False)
+    is_overflow = Column(Boolean, nullable=False, default=False)
+    has_insert = Column(Boolean, nullable=False, default=False)
+    divert = Column(Boolean, nullable=False, default=False)
+    barcodes = Column(JSON, nullable=False, default=list)
+    output_path = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    job = relationship("Job", back_populates="mail_pieces")
 
 
 class JobResult(Base):

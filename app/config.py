@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     default_quiet_zone_mm: float = 6.5
     default_dpi: int = 600
     overflow_threshold: int = 6
+    # Hard ceiling for detected doc size — docs above this abort detection
+    # (likely two recipients merged). Must not exceed the 9-sheet barcode field.
+    max_sheets_per_doc: int = 9
+    # Clear-zone inspection of pages before stamping: "off", "warn", or "abort"
+    clear_zone_mode: str = "warn"
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str = ""

@@ -52,7 +52,8 @@ def start_job(job_id: int, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job.status not in (JobStatus.DRAFT, JobStatus.PARTIAL):
+    # ERROR jobs may be re-run: checkpointed progress resumes where it stopped
+    if job.status not in (JobStatus.DRAFT, JobStatus.PARTIAL, JobStatus.ERROR):
         raise HTTPException(status_code=400, detail=f"Job cannot be run from status {job.status}")
 
     try:
@@ -63,13 +64,11 @@ def start_job(job_id: int, db: Session = Depends(get_db)):
             "output_dir": result.output_dir,
             "report_path": result.report_path,
         }
-    except (ValueError, Exception) as e:
-        db.refresh(job)
-        job.error_message = str(e)
-        if job.status != JobStatus.ERROR:
-            job.status = JobStatus.ERROR
-        db.commit()
+    except ValueError as e:
+        # run_job already recorded ERROR status and the message on the job
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Job failed unexpectedly: {e}")
 
 
 @router.get("/{job_id}/report")
@@ -197,11 +196,7 @@ async def job_progress(websocket: WebSocket, job_id: int):
             "verification": result.verification.value,
         })
     except Exception as e:
-        db.refresh(job)
-        job.error_message = str(e)
-        if job.status != JobStatus.ERROR:
-            job.status = JobStatus.ERROR
-        db.commit()
+        # run_job records ERROR status and the message on the job
         await websocket.send_json({"status": "error", "message": str(e)})
     finally:
         await websocket.close()

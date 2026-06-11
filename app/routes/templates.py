@@ -15,7 +15,7 @@ from app.schemas import (
     RegionCreate, RegionResponse,
     TemplateCreate, TemplateResponse,
 )
-from app.services.detector import detect_from_regions
+from app.services.detector import DetectionError, detect_from_regions
 from app.services.template import (
     create_template, delete_template, get_template, list_templates, update_template,
 )
@@ -208,6 +208,16 @@ def test_detect(
     page_format = PageFormat(data.page_format) if data else template.page_format
     regions = template.regions
 
+    detection_warnings: list[str] = []
+    try:
+        docs = detect_from_regions(
+            template.sample_pdf_path, regions, page_format,
+            max_sheets_per_doc=settings.max_sheets_per_doc,
+            warnings=detection_warnings,
+        )
+    except DetectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     result = {
         "docs": [
             {
@@ -218,8 +228,9 @@ def test_detect(
                 "side_a_pages": d.side_a_pages,
                 "unique_id": d.unique_id,
             }
-            for d in detect_from_regions(template.sample_pdf_path, regions, page_format)
+            for d in docs
         ],
+        "warnings": detection_warnings,
     }
 
     if debug:

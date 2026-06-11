@@ -9,6 +9,10 @@ import pdfplumber
 from app.enums import MatchType, PageFormat, RegionRole
 
 
+class DetectionError(ValueError):
+    """Document boundary detection produced an unsafe or inconsistent result."""
+
+
 @dataclass
 class DetectedDoc:
     """A document set detected from region-based analysis of a PDF."""
@@ -94,11 +98,13 @@ class TextMatcher:
             m = re.search(pattern, text)
             if m is None:
                 return None
-            # Return first capture group if present, else full match
-            try:
-                return m.group(1) if m.lastindex else m.group(0)
-            except (AttributeError, IndexError):
-                return m.group(0)
+            # Return the first capture group that participated in the match,
+            # else the full match. (m.group(1) can be None when an optional
+            # group did not participate.)
+            for group in m.groups():
+                if group is not None:
+                    return group
+            return m.group(0)
 
         elif match_type == MatchType.NUMERIC:
             m = re.search(r'\d+', text)
@@ -111,6 +117,9 @@ def detect_from_regions(
     pdf_path: str | Path,
     regions: list,             # list of Region ORM objects
     page_format: PageFormat,
+    *,
+    max_sheets_per_doc: int | None = None,
+    warnings: list[str] | None = None,
 ) -> list[DetectedDoc]:
     """
     Walk side-A pages of a PDF, extract text from defined regions,
@@ -123,6 +132,17 @@ def detect_from_regions(
     4. Build a "signature" from GROUP_BOUNDARY region texts
     5. Walk pages; when signature changes -> new document boundary
     6. For each detected document, extract sheet_count and unique_id
+
+    Safety guarantees:
+    - DUPLEX input must have an even page count (DetectionError otherwise).
+    - sheet_count always equals len(side_a_pages); a PAGE_COUNTER region that
+      disagrees with the detected page span raises DetectionError instead of
+      silently overriding it.
+    - If max_sheets_per_doc is given, any doc exceeding it raises
+      DetectionError (likely two adjacent recipients with identical
+      GROUP_BOUNDARY text merged into one mailpiece).
+    - Side-A pages where no GROUP_BOUNDARY text could be extracted are treated
+      as continuations and reported via the optional *warnings* list.
     """
     # 1. Classify regions by role
     gb_regions = sorted(
@@ -145,6 +165,12 @@ def detect_from_regions(
     if total_pages == 0:
         return []
 
+    if page_format == PageFormat.DUPLEX and total_pages % 2 != 0:
+        raise DetectionError(
+            f"DUPLEX detection requires an even page count, but the PDF has "
+            f"{total_pages} pages — the last sheet would be missing its side B"
+        )
+
     if page_format == PageFormat.DUPLEX:
         side_a_indices = [i for i in range(total_pages) if i % 2 == 0]
     else:
@@ -156,6 +182,7 @@ def detect_from_regions(
     # 3. Extract text from all regions on each side-A page
     extractor = RegionTextExtractor()
     page_extractions: list[PageExtraction] = []
+    empty_signature_pages: list[int] = []
 
     for page_idx in side_a_indices:
         region_texts = extractor.extract_page_text(pdf_path, page_idx, regions)
@@ -168,11 +195,23 @@ def detect_from_regions(
             sig_parts.append(matched or "")
         signature = tuple(sig_parts)
 
+        if gb_regions and not any(signature):
+            empty_signature_pages.append(page_idx)
+
         page_extractions.append(PageExtraction(
             page_index=page_idx,
             regions_text=region_texts,
             signature=signature,
         ))
+
+    if warnings is not None and empty_signature_pages:
+        shown = ", ".join(str(p + 1) for p in empty_signature_pages[:20])
+        more = "" if len(empty_signature_pages) <= 20 else f" (+{len(empty_signature_pages) - 20} more)"
+        warnings.append(
+            f"{len(empty_signature_pages)} side-A page(s) had no GROUP_BOUNDARY "
+            f"text and were treated as continuations of the previous document "
+            f"(pages: {shown}{more})"
+        )
 
     # 4. Detect document boundaries by signature changes
     detected_docs: list[DetectedDoc] = []
@@ -191,6 +230,7 @@ def detect_from_regions(
                 pc_regions=pc_regions,
                 uid_regions=uid_regions,
                 page_format=page_format,
+                max_sheets_per_doc=max_sheets_per_doc,
             )
             detected_docs.append(doc)
             doc_index += 1
@@ -204,6 +244,7 @@ def detect_from_regions(
         pc_regions=pc_regions,
         uid_regions=uid_regions,
         page_format=page_format,
+        max_sheets_per_doc=max_sheets_per_doc,
     )
     detected_docs.append(doc)
 
@@ -217,8 +258,15 @@ def _build_doc(
     pc_regions: list,
     uid_regions: list,
     page_format: PageFormat,
+    max_sheets_per_doc: int | None = None,
 ) -> DetectedDoc:
-    """Build a DetectedDoc from start and end PageExtractions."""
+    """Build a DetectedDoc from start and end PageExtractions.
+
+    sheet_count is always derived from the detected page span, so it can never
+    disagree with side_a_pages. A PAGE_COUNTER region acts as an independent
+    cross-check: if it yields a total that differs from the detected span, the
+    document was mis-segmented and a DetectionError is raised.
+    """
     start_page = start_ext.page_index
 
     # For DUPLEX, the document includes the side-B page after each side-A page.
@@ -228,14 +276,31 @@ def _build_doc(
     else:
         end_page = end_ext.page_index
 
-    # Determine sheet_count
-    sheet_count = _extract_sheet_count(start_ext, pc_regions, page_format, start_page, end_page)
-
-    # Compute side-A pages
+    # Compute side-A pages — the source of truth for sheet_count
     if page_format == PageFormat.DUPLEX:
         side_a_pages = list(range(start_page, end_page + 1, 2))
     else:
         side_a_pages = list(range(start_page, end_page + 1))
+
+    sheet_count = len(side_a_pages)
+
+    # Cross-check against a PAGE_COUNTER region ("Page X of Y") when present
+    counter_total = _extract_counter_total(start_ext, pc_regions)
+    if counter_total is not None and counter_total != sheet_count:
+        raise DetectionError(
+            f"Document {index + 1} (pages {start_page + 1}-{end_page + 1}): "
+            f"PAGE_COUNTER region reports {counter_total} sheet(s) but boundary "
+            f"detection found {sheet_count} — the document was likely "
+            f"mis-segmented; aborting before any mailpiece can be mis-collated"
+        )
+
+    if max_sheets_per_doc is not None and sheet_count > max_sheets_per_doc:
+        raise DetectionError(
+            f"Document {index + 1} (pages {start_page + 1}-{end_page + 1}) has "
+            f"{sheet_count} sheets, exceeding the {max_sheets_per_doc}-sheet "
+            f"limit — possibly two adjacent recipients with identical "
+            f"GROUP_BOUNDARY text merged into one mailpiece"
+        )
 
     # Extract unique_id
     unique_id = _extract_unique_id(start_ext, uid_regions)
@@ -251,14 +316,11 @@ def _build_doc(
     )
 
 
-def _extract_sheet_count(
+def _extract_counter_total(
     start_ext: PageExtraction,
     pc_regions: list,
-    page_format: PageFormat,
-    start_page: int,
-    end_page: int,
-) -> int:
-    """Extract sheet count from PAGE_COUNTER regions, or infer from page range."""
+) -> int | None:
+    """Extract the declared sheet total (the Y of "Page X of Y") if available."""
     for r in pc_regions:
         text = start_ext.regions_text.get(r.id, "")
         if not text:
@@ -273,12 +335,7 @@ def _extract_sheet_count(
             nums = re.findall(r'\d+', match_val)
             if len(nums) >= 2:
                 return int(nums[-1])
-
-    # Infer from page range
-    if page_format == PageFormat.DUPLEX:
-        return ((end_page - start_page) // 2) + 1
-    else:
-        return (end_page - start_page) + 1
+    return None
 
 
 def _extract_unique_id(

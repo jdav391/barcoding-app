@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from PIL import Image
 from pylibdmtx.pylibdmtx import encode as dmtx_encode
 
+# Single-digit positional fields cap both values at 9. Exceeding this would
+# shift every downstream position in the payload, so it is a hard error.
+MAX_SHEET_NUMBER = 9
+MAX_SET_COUNT = 9
+
+
+class BarcodePayloadError(ValueError):
+    """A field value cannot be represented in the positional barcode format."""
+
 
 @dataclass
 class SheetBarcode:
@@ -38,7 +47,25 @@ def generate_barcode_string(
     - Divert    : 1 if divert else 0 (only present when divert is not None)
     - UniqueID  : 9-digit zero-padded; if unique_id has more than 9 digits,
                   the last 9 digits are used.
+
+    Raises BarcodePayloadError if any field is out of range for its
+    single-character position.
     """
+    if not 1 <= sheet_number <= MAX_SHEET_NUMBER:
+        raise BarcodePayloadError(
+            f"sheet_number {sheet_number} out of range 1-{MAX_SHEET_NUMBER}"
+        )
+    if not 1 <= set_count <= MAX_SET_COUNT:
+        raise BarcodePayloadError(
+            f"set_count {set_count} out of range 1-{MAX_SET_COUNT}"
+        )
+    if sheet_number > set_count:
+        raise BarcodePayloadError(
+            f"sheet_number {sheet_number} exceeds set_count {set_count}"
+        )
+    if unique_id < 0:
+        raise BarcodePayloadError(f"unique_id must be non-negative, got {unique_id}")
+
     eog = "1" if is_end_of_group else "0"
     sheet = str(sheet_number)
     insert = "1" if has_insert else "0"
@@ -48,10 +75,14 @@ def generate_barcode_string(
     uid = str(unique_id % (10 ** 9)).zfill(9)
 
     if divert is None:
-        return f"{eog}{sheet}{insert}{count}{uid}"
+        barcode = f"{eog}{sheet}{insert}{count}{uid}"
     else:
         div = "1" if divert else "0"
-        return f"{eog}{sheet}{insert}{count}{div}{uid}"
+        barcode = f"{eog}{sheet}{insert}{count}{div}{uid}"
+
+    if not validate_barcode_string(barcode):
+        raise BarcodePayloadError(f"generated barcode failed validation: {barcode!r}")
+    return barcode
 
 
 def generate_barcode_image(
@@ -64,7 +95,18 @@ def generate_barcode_image(
     module_px = round(module_size_mm * pixels_per_mm)
     quiet_zone_px = round(quiet_zone_mm * pixels_per_mm)
 
-    encoded = dmtx_encode(barcode_string.encode("ascii"), size="18x18")
+    try:
+        encoded = dmtx_encode(barcode_string.encode("ascii"), size="18x18")
+    except Exception as e:
+        raise BarcodePayloadError(
+            f"Data Matrix encoding failed for {barcode_string!r} "
+            f"(18x18 symbol): {e}"
+        ) from e
+    if encoded is None:
+        raise BarcodePayloadError(
+            f"Data Matrix encoding returned no symbol for {barcode_string!r} "
+            f"— payload may exceed 18x18 capacity"
+        )
     raw = Image.frombytes("RGB", (encoded.width, encoded.height), encoded.pixels)
 
     symbol_px = 18 * module_px

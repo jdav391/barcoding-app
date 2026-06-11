@@ -1,7 +1,8 @@
 import datetime as dt
 import json
+import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from app.enums import (
     FeedDirection, IdSource, ImportMethod, JobMode, JobStatus, MatchType, OutputMode,
     PageFormat, RegionRole, VerificationStatus,
@@ -43,6 +44,18 @@ class RegionCreate(BaseModel):
     match_type: MatchType = MatchType.EXACT
     match_pattern: str | None = None
     priority: int = 0
+
+    @model_validator(mode="after")
+    def _validate_regex_pattern(self):
+        # Catch bad patterns at save time, not mid-job at detection time
+        if self.match_type == MatchType.REGEX:
+            if not self.match_pattern:
+                raise ValueError("REGEX match type requires a match_pattern")
+            try:
+                re.compile(self.match_pattern)
+            except re.error as e:
+                raise ValueError(f"Invalid regex pattern: {e}")
+        return self
 
 
 class RegionResponse(BaseModel):
