@@ -1,7 +1,9 @@
 # Barcoding Application — Design Spec
 
 **Date:** 2026-05-19
-**Status:** Draft
+**Status:** Superseded in part — see `2026-06-11-production-hardening.md` for the
+current barcode format (insert field is now 0-4), safety guards, vector
+rendering, per-piece accountability, and watched intake directories.
 **Stack:** Python + FastAPI + SQLite + Jinja2/HTMX
 
 ## Overview
@@ -15,12 +17,12 @@ A local web application that generates and applies 2D DataMatrix barcodes to com
 | Position | 1 | 2 | 3 | 4 | 5-13 |
 |---|---|---|---|---|---|
 | Field | End of Group | Sheet # | Insert | Set Count | Unique ID |
-| Type | Binary (0/1) | Integer (1-9) | Binary (0/1) | Integer (1-9) | 9-digit |
+| Type | Binary (0/1) | Integer (1-9) | Integer (0-4) | Integer (1-9) | 9-digit |
 | Example | 0 | 3 | 0 | 7 | 158404144 |
 
 - **End of Group (pos 1):** 1 on the last sheet fed into the machine. Placement depends on feed direction.
 - **Sheet # (pos 2):** Current sheet, 1-based from logical first page, always counts 1,2,3 regardless of feed direction.
-- **Insert (pos 3):** 1 triggers additional insert pocket. Always manually toggled — no auto-detection.
+- **Insert (pos 3):** number of insert pockets to feed, 0-4 (machines have four pockets; updated 2026-06-11, previously binary 0/1). Set per job/preset/template before processing — no auto-detection.
 - **Set Count (pos 4):** Total sheets in this document set (1-9, capped by 6-sheet machine limit).
 - **Unique ID (pos 5-13):** 9-digit identifier unique to each document set. Sequential, account number, or file number. Auto-pads/right-justifies if shorter.
 
